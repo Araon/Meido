@@ -8,17 +8,17 @@ from telegram.update import Update
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-with open('botConfig.json', 'r') as config:
+with open('config/botConfig.json', 'r') as config:
     configdata = json.load(config)
 
 API_TOKEN = configdata.get("bot_token")
 
-def start(update, context):
+def start(update):
     """Send a message when the command /start is issued."""
     update.message.reply_text('Hi!')
 
 
-def help(update, context):
+def help(update):
     """Send a message when the command /help is issued."""
     update.message.reply_text('Help!')
 

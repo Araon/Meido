@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 #https://sudonull.com/post/62683-Telegram-bots-Uploading-files-larger-than-50mb
-'''
-The function of this uploader is to upload a given file to @animedatabase_bot
-and get the file_id from the the uploaded file.
 
+'''
 fun facts i just came accross
 
-the .send_file() function will have to send the file to the bot itself
+the .send_file() function will have to send the file to the bot that will be serving the user,
 Just uploading the file to the server via upload , getting file_id and passing it to the bot will not work,
-file_id only works inside the chat in which it was created -
-so that our bot can send the file to the user by file_id - 
-the agent must send him this file
+file_id only works inside the chat in which it was created.
+So that our bot can send the file to the user by file_id 
+the agent must send the bot this file
 then the bot will receive own file_id for this file and will be able to dispose of it.
 
 '''
+
 from telethon import TelegramClient
 from telethon.tl.types import DocumentAttributeVideo
 import asyncio
@@ -37,14 +36,22 @@ bot_name = configdata.get('bot_name')
 
 
 def callback(current, total):
+    # for upload progression
     print('Uploaded: {:.2%}'.format(current / total))
 
-async def uploadVideo(bot_name,file_path,file_name,chat_id,object_id):
+
+'''
+bot_name = the actual bot name
+file_path = where the file is downloaded
+chat_id = this is the end user chat_id, sent over caption to bot, so it can parse and send it to the correct user
+object_id = an internal id used for mapping of file_id and filename stored in the server(for optimization).
+'''
+async def uploadVideo(bot_name,file_path,chat_id,object_id):
     async with TelegramClient(entity, api_id, api_hash) as client:
         await client.send_file(
                             str(bot_name),
                             file_path,
-                            caption=str(chat_id + ':' + object_id + ':' + file_name),
+                            caption=str(chat_id + ':' + object_id),
                             attributes=[DocumentAttributeVideo(0,0,0)],
                             progress_callback=callback,
                             part_size_kb=512,
@@ -55,14 +62,11 @@ async def uploadVideo(bot_name,file_path,file_name,chat_id,object_id):
 
 async def main(argv):
     file_path = argv[1]
-    file_name = argv[2]
-    chat_id = argv[3]
-    object_id = argv[4]
+    chat_id = argv[2]
+    object_id = argv[3]
     
-    
-    await uploadVideo(bot_name,file_path,file_name,chat_id,object_id)
+    await uploadVideo(bot_name,file_path,chat_id,object_id)
 
-    
 
 if __name__ == '__main__':
     import sys

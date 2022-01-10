@@ -14,7 +14,7 @@
          - Episode_id
 
 # Happy Path
-* /get and /getll
+* /get and /getall
     1. call a function videoFetcher(user_input).
     2. the videoFetcher will check in mapping db if found return file_id
     3. if the not found in mapping db will call downloadVideoService and it will return file_path,file_name,duration

@@ -16,7 +16,7 @@ API_TOKEN = configdata.get("bot_token")
 
 
 def start(update,context):
-    update.message.reply_text(str(update.message.chat_id) + ": " + update.message.text)
+    update.message.reply_text("Hello there!")
 
 
 def help(update,context):
@@ -38,6 +38,7 @@ def get(update, context):
         userdata = parse_search_query(userInput)
         update.message.reply_text(f"Checking Internal Db\nAnime: {userdata.get('series')}\nSeason: {userdata.get('season_id')}\nEpisode: {userdata.get('episode_id')}")
         
+        
     else:
         update.message.reply_text("Please refer to /help")
     
@@ -56,7 +57,6 @@ def getall(update, context):
     
 
 
-
 def error(update, context):
     """Log Errors caused by Updates."""
     logger.warning('Update "%s" caused error "%s"', update, context.error)
@@ -67,19 +67,25 @@ def check_document(update, context):
     and returns a file id
     '''
     logger.info('check_document function is called!')
-    # these are from the file sent from the agent
-    file_id = update.message.video.file_id
-    caption = update.message.caption
+    user_id = update.message.from_user.id
     
-    end_user_chat_id = caption.split(":")[1]
-    
-    #Keep in mind here i have to parse the chat_id from the caption above
-    update.message.send_document(end_user_chat_id,file_id)
-            
+    if user_id == configdata.get('agent_user_id'):
+        file_id = update.message.video.file_id
+        caption = update.message.caption  
+        end_user_chat_id = caption.split(":")[0]
+        #Keep in mind here i have to parse the chat_id from the caption above
+        context.bot.send_video(end_user_chat_id,file_id,supports_streaming=True)
+
+  
 
 def debug_message(update, context):
     logger.info('debug_message function is called!')
-    update.message.reply_text('up')
+    user_id = update.message.from_user.id
+    
+    update.message.reply_text(str(user_id))
+
+
+
     
 
 

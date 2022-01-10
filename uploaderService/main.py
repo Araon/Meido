@@ -70,6 +70,6 @@ async def main(argv):
 
 if __name__ == '__main__':
     import sys
-    asyncio.run(main())
+    asyncio.run(main(sys.argv[0:]))
     
 # python uploader.py rainfall.mp4 rainfall chat_id narutos1ep34

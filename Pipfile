@@ -8,8 +8,6 @@ verify_ssl = true
 [packages]
 python-telegram-bot = "==13.10"
 telegramclient = "*"
-telethon = "==1.24.0"
-backports-zoneinfo = "==0.2.1"
 cachetools = "==4.2.2"
 certifi = "==2021.10.8"
 pyaes = "==1.6.1"
@@ -22,6 +20,9 @@ tornado = "==6.1"
 tzdata = "==2021.5"
 tzlocal = "==4.1"
 APScheduler = "==3.6.3"
+ffmpeg = "*"
+Telethon = "==1.24.0"
+"backports.zoneinfo" = "==0.2.1"
 
 [requires]
 python_version = "3.8"

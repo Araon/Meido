@@ -1,5 +1,6 @@
 import subprocess
 import os
+import sys
 
 def downloadVideo(search_query,search_query_range,search_quality):
     # animdl download "demon slayer" -r 1
@@ -22,9 +23,8 @@ def convert2mp4(infile, outfile):
     # ffmpeg -i E01.ts -c:v copy -c:a copy -preset:v ultrafast -segment_list_flags +live video.mp4
     
     subprocess.run(['ffmpeg','-i',infile,'-c:v','copy','-c:a','copy','-preset:v','ultrafast','-segment_list_flags','+live',outfile])
-    
+
 def main(argv):
-    
     search_query = argv[1]
     search_query_range = argv[2]
     anime_quality = argv[3] if len(sys.argv) >= 4 else '720[subtitle]'
@@ -34,6 +34,6 @@ def main(argv):
     convert2mp4(infile,outfile)
     os.remove(infile)
 
-if __name__ == '__main__':
-    import sys
-    main(sys.argv[0:])
+
+
+main(sys.argv[0:])

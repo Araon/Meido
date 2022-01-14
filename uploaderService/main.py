@@ -19,7 +19,7 @@ import asyncio
 import json
 
 
-with open('config/agentConfig.json', 'r') as config:
+with open('uploaderService/config/agentConfig.json', 'r') as config:
     configdata = json.load(config)
 
 entity = configdata.get('entity') #session name - it doesn't matter what
@@ -30,9 +30,7 @@ phone =  configdata.get('phone')
 bot_name = configdata.get('bot_name')
 
 
-# if not client.is_user_authorized():
-#     #client.send_code_request(phone) #at the first start - uncomment, after authorization to avoid FloodWait I advise you to comment
-#     client.sign_in(phone, input('Enter code: '))
+
 
 
 def callback(current, total):
@@ -48,6 +46,9 @@ object_id = an internal id used for mapping of file_id and filename stored in th
 '''
 async def uploadVideo(bot_name,file_path,chat_id,object_id):
     async with TelegramClient(entity, api_id, api_hash) as client:
+        if not await client.is_user_authorized():
+            #await client.send_code_request(phone) #at the first start - uncomment, after authorization to avoid FloodWait I advise you to comment
+            await client.sign_in(phone, input('Enter code: '))
         await client.send_file(
                             str(bot_name),
                             file_path,

@@ -14,7 +14,7 @@ example - /search Death Note
 import os
 
 def showhelp():
-    helpText = "Here are the following bot commands\n\n/get - will download the anime episode you wanted\nexample - /get Death note, s1, ep3\n\n/getadd - will provide all the episode of an anime in a given season\nexample - /getall Death Note, s1\n\n/search - will provide deatails about an anime\nexample - /search Death Note"
+    helpText = "Here are the following bot commands\n\n/get - will download the anime episode you wanted(make sure you seperate the name and the season and ep with comma)\nexample - /get Death note, 1, 3\n\n/getall(still in development) - will provide all the episode of an anime in a given season\nexample - /getall Death Note, 1\n\n/search(still in development) - will provide deatails about an anime\nexample - /search Death Note"
     return helpText
 
 def parse_search_query(raw_input):

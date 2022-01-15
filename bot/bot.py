@@ -1,10 +1,14 @@
+from cgitb import text
 import logging
 import json
 from operator import truediv
+from time import time
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram.update import Update
 from botUtils import showhelp,parse_search_query,getalltsfiles
 import subprocess
+import datetime
+import pytz
 
 
 
@@ -19,17 +23,16 @@ API_TOKEN = configdata.get("bot_token")
 
 
 def start(update,context):
-    update.message.reply_text("Hello there!")
+    update.message.reply_text("Thanks for using Araon Bot(v:0.01)\nThis is a alpha built so expect delayed response and many bugs\nIf you spot any issue feel free to reach out")
 
 
 def help(update,context):
     text = showhelp()
     update.message.reply_text(text)
-
+    
 
 def search(update, context):
     logger.info('Search function is called!')
-    
     update.message.reply_text('Searching....')
 
 def get(update, context):
@@ -42,13 +45,10 @@ def get(update, context):
         update.message.reply_text(f"Checking Internal Db\nAnime: {userdata.get('series')}\nSeason: {userdata.get('season_id')}\nEpisode: {userdata.get('episode_id')}")
         
         download_status = subprocess.check_call("python downloaderService/main.py "+'"'+userdata.get('series')+'"'+ ' ' + userdata.get('episode_id') , shell=True)
-        update.message.reply_text(f"{userdata.get('series')} - {userdata.get('episode_id')} Downloaded!")
-        
+        update.message.reply_text(f"{userdata.get('series')} - {userdata.get('episode_id')} almost done downloading on the server side!")
         filepath = getalltsfiles()
-        print("getalltsfiles: ",filepath)
-        update.message.reply_text(f"{userdata.get('series')} - {userdata.get('episode_id')} Uploading Started!")
+        #update.message.reply_text(f"{userdata.get('series')} - {userdata.get('episode_id')} Uploading Started!")
         upload_status = subprocess.check_call("python uploaderService/main.py " +'"'+filepath+'"'+ ' ' + str(chat_id) + ' ' + (userdata.get('series')+str(userdata.get('episode_id'))), shell=True)
-        print(upload_status)
 
     else:
         update.message.reply_text("Please refer to /help")
@@ -71,7 +71,7 @@ def check_document(update, context):
         caption = update.message.caption  
         end_user_chat_id = caption.split(":")[0]
         #Keep in mind here i have to parse the chat_id from the caption above
-        context.bot.send_video(end_user_chat_id,file_id,supports_streaming=True)
+        context.bot.send_video(end_user_chat_id,file_id,supports_streaming=True,timeout=120)
 
   
 
@@ -81,12 +81,24 @@ def debug_message(update, context):
     
     update.message.reply_text(str(user_id))
 
+def callback_minute(context):
+    context.bot.send_message(chat_id = configdata.get('agent_user_id'), text = 'Heart_beat <3')
 
+# def check_for_update():
+#     logger.info('Checking Update for Animdl')
+#     subprocess.check_call("python -m pip install git+https://www.github.com/justfoolingaround/animdl")
+    
 
 def main():
-    updater = Updater(token=API_TOKEN, use_context=True, request_kwargs={'read_timeout': 100, 'connect_timeout': 100})
+    updater = Updater(token=API_TOKEN, use_context=True, request_kwargs={'read_timeout': 10, 'connect_timeout': 10})
+    
+    job = updater.job_queue
+    
     # Get the dispatcher to register handlers
     dp = updater.dispatcher
+    
+    job.run_repeating(callback_minute, interval=60,first=10)
+    #job.run_daily(check_for_update)
 
     # on different commands - answer in Telegram
     dp.add_handler(CommandHandler("start", start))
@@ -99,8 +111,9 @@ def main():
     dp.add_handler(MessageHandler(Filters.video, check_document))
 
     dp.add_error_handler(error)
+
     
-    updater.start_polling()
+    updater.start_polling(timeout=120)
     updater.idle()
 
 

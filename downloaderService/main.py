@@ -2,9 +2,10 @@ import subprocess
 import os
 import sys
 
-def downloadVideo(search_query,search_query_range,search_quality):
+def downloadVideo(search_query,search_query_range):
     # animdl download "demon slayer" -r 1
-    subprocess.run(['animdl', 'download',search_query,f'-r {str(search_query_range)}','--auto','-q',search_quality])
+    print('animdl', 'download',search_query,f'-r {str(search_query_range)}','--auto')
+    subprocess.run(['animdl', 'download',search_query,f'-r {str(search_query_range)}','--auto'])
     
 def getalltsfiles():
     walk_dir = os.getcwd()
@@ -19,19 +20,21 @@ def getalltsfiles():
 
 
 def convert2mp4(infile, outfile):
-    
     # ffmpeg -i E01.ts -c:v copy -c:a copy -preset:v ultrafast -segment_list_flags +live video.mp4
-    
     subprocess.run(['ffmpeg','-i',infile,'-c:v','copy','-c:a','copy','-preset:v','ultrafast','-segment_list_flags','+live',outfile])
 
 
 def main(argv):
     search_query = argv[1]
+    print(search_query)
     search_query_range = argv[2]
-    anime_quality = argv[3] if len(sys.argv) >= 4 else '720[subtitle]'
-    
-    downloadVideo(search_query,search_query_range,anime_quality)
-    infile, outfile = getalltsfiles()
+    #anime_quality = argv[3] if len(sys.argv) >= 4 else '720[subtitle]'
+    search_query_in_quotes = f'"{search_query}"'
+    downloadVideo(search_query_in_quotes,search_query_range)
+    try:
+        infile, outfile = getalltsfiles()
+    except:
+        infile, outfile = None,None
     convert2mp4(infile,outfile)
     os.remove(infile)
 

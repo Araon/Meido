@@ -1,5 +1,5 @@
 <p align="center">
-   <img src="https://raw.githubusercontent.com/Araon/Araon_chan/master/docs/anime.png?token=GHSAT0AAAAAABNS4OMWZXI5TCVEO62GMA3SYQ3H4AQ" width="250" height="250">
+   <img src="https://raw.githubusercontent.com/Araon/Araon_chan/master/docs/anime.png" width="250" height="250">
 </p>
 
 # Araon-Chan

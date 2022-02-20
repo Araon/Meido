@@ -37,5 +37,5 @@ Zoro  | 720p, 1080p | ✔️
     - [ ] Change file path 
 
 #### Status
-Still under development :tw-1f528:
+Still under development 🛠️
 

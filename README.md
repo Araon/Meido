@@ -3,7 +3,7 @@
 </p>
 
 # Araon-Chan
-###### A Telegram bot to send anime directly to your inbox
+###### A Telegram bot to send anime directly to your inbox, This uses [animdl](https://github.com/justfoolingaround/animdl) for searching and downloading the file
 
 ## [Architecture](https://github.com/Araon/Araon_chan/blob/master/docs/architechture.md)
 ## [Database](https://github.com/Araon/Araon_chan/blob/master/docs/databaseSchema.md)

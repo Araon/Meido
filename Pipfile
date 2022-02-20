@@ -23,6 +23,7 @@ apscheduler = "*"
 ffmpeg = "*"
 backports-zoneinfo = "*"
 jikanpy = "*"
+pymongo = "*"
 
 [requires]
 python_version = "3.8"

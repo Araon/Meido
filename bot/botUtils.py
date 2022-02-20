@@ -28,7 +28,7 @@ def parse_search_query(raw_input):
         episode_id = -1
         
     query_obj = {
-        "series" : series_name,
+        "series_name" : series_name,
         "season_id" : season_id,
         "episode_id": episode_id
     }

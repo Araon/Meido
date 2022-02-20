@@ -6,6 +6,7 @@ from time import time
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram.update import Update
 from botUtils import showhelp,parse_search_query,getalltsfiles,getAnimelink
+from database import getData, postData
 import subprocess
 import datetime
 import pytz
@@ -44,15 +45,18 @@ def get(update, context):
     userInput = rawUserInput[:]
     if userInput and not userInput == " ":
         userdata = parse_search_query(userInput)
-        update.message.reply_text(f"Checking Internal Db\nAnime: {userdata.get('series')}\nSeason: {userdata.get('season_id')}\nEpisode: {userdata.get('episode_id')}")
-        download_status = subprocess.check_call("python downloaderService/main.py "+'"'+userdata.get('series')+'"'+' '+ userdata.get('episode_id') , shell=True)
+        update.message.reply_text(f"Checking Internal Db\nAnime: {userdata.get('series_name')}\nSeason: {userdata.get('season_id')}\nEpisode: {userdata.get('episode_id')}")
+        anime_name = getData(userdata)
+        if not anime_name:
+            download_status = subprocess.check_call("python downloaderService/main.py "+'"'+userdata.get('series_name')+'"'+' '+ userdata.get('episode_id') , shell=True)
+        else:
+            context.bot.send_video(chat_id,anime_name.get("file_id"),supports_streaming=True,timeout=120)
     else:
         update.message.reply_text("Please refer to /help")
         
-    update.message.reply_text(f"{userdata.get('series')} - {userdata.get('episode_id')} almost done downloading on the server side!")
+    update.message.reply_text(f"{userdata.get('series_name')} - {userdata.get('episode_id')} almost done downloading on the server side!")
     filepath = getalltsfiles()
-    #update.message.reply_text(f"{userdata.get('series')} - {userdata.get('episode_id')} Uploading Started!")
-    upload_status = subprocess.check_call("python uploaderService/main.py " +'"'+filepath+'"'+ ' ' + str(chat_id) + ' ' + (userdata.get('series')+str(userdata.get('episode_id'))), shell=True)
+    upload_status = subprocess.check_call("python uploaderService/main.py " +'"'+filepath+'"'+ ' ' + str(chat_id) + ' ' + (userdata.get('series_name')+str(userdata.get('episode_id'))), shell=True)
 
     
 def error(update, context):
@@ -76,7 +80,6 @@ def check_document(update, context):
         #Keep in mind here i have to parse the chat_id from the caption above
         context.bot.send_video(end_user_chat_id,file_id,supports_streaming=True,timeout=120)
 
-  
 
 def debug_message(update, context):
     logger.info('debug_message function is called!')
@@ -94,6 +97,7 @@ def callback_minute(context):
 def main():
     updater = Updater(token=API_TOKEN, use_context=True, request_kwargs={'read_timeout': 10, 'connect_timeout': 10})
     job = updater.job_queue
+    
     # Get the dispatcher to register handlers
     dp = updater.dispatcher
     job.run_repeating(callback_minute, interval=120,first=10)

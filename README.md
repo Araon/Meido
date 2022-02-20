@@ -1,4 +1,6 @@
- <img src="https://raw.githubusercontent.com/Araon/Araon_chan/master/docs/anime.png?token=GHSAT0AAAAAABNS4OMWZXI5TCVEO62GMA3SYQ3H4AQ" width="250" height="250">
+<p align="center">
+   <img src="https://raw.githubusercontent.com/Araon/Araon_chan/master/docs/anime.png?token=GHSAT0AAAAAABNS4OMWZXI5TCVEO62GMA3SYQ3H4AQ" width="250" height="250">
+</p>
 
 # Araon-Chan
 ###### A Telegram bot to send anime directly to your inbox
@@ -7,7 +9,7 @@
 ## [Database](https://github.com/Araon/Araon_chan/blob/master/docs/databaseSchema.md)
 
 
-###Websites used
+### Websites used
 Website  | Quality | Status
 ------------- | ------------- | ------------
 9Animel  | 720p, 1080p | ✔️

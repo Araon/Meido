@@ -27,7 +27,7 @@ Twist  | 720p, 1080p | ✔️
 Zoro  | 720p, 1080p | ✔️
 
 
-###To-do List
+### To-do List
 
 - [x] Add Mongodb for better response time
 - [ ] Precache popular trending animes to database

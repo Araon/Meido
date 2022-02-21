@@ -1,16 +1,13 @@
-from cgitb import text
 import logging
 import json
-from operator import truediv
-from time import time
+from datetime import datetime
+from turtle import up
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram.update import Update
-from botUtils import showhelp,parse_search_query,getalltsfiles,getAnimelink
-from database import getData, postData
+from botUtils import showhelp,parse_search_query,getalltsfiles
+from database import getData, postData, updateData
 import subprocess
 import datetime
-import pytz
-
 
 
 #enabling Logging
@@ -32,38 +29,41 @@ def help(update,context):
     update.message.reply_text(text)
     
 
-def search(update, context):
-    logger.info('Search function is called!')
-    link = getAnimelink(update.message.text)
-    
-
-
-def get(update, context):
+def getanime(update, context):
     logger.info('download function is called!')
     chat_id = update.message.chat_id
     rawUserInput = update.message.text
-    userInput = rawUserInput[:]
+    userInput = rawUserInput[10:]
+    
     if userInput and not userInput == " ":
         userdata = parse_search_query(userInput)
         update.message.reply_text(f"Checking Internal Db\nAnime: {userdata.get('series_name')}\nSeason: {userdata.get('season_id')}\nEpisode: {userdata.get('episode_id')}")
-        anime_name = getData(userdata)
+        logger.info('search_in_mongodb:"%s"', userdata)
+        search_in_mongodb = userdata.pop('season_id')
+        anime_name = getData(search_in_mongodb)
         if not anime_name:
+            logger.info('Got data from mongoDB')
+            logger.info(anime_name)
+            update_times_queried = updateData(anime_name)
             download_status = subprocess.check_call("python downloaderService/main.py "+'"'+userdata.get('series_name')+'"'+' '+ userdata.get('episode_id') , shell=True)
         else:
-            context.bot.send_video(chat_id,anime_name.get("file_id"),supports_streaming=True,timeout=120)
+            try:
+                context.bot.send_video(chat_id,anime_name.get("file_id"),supports_streaming=True,timeout=120)
+            except:
+                update.message.reply_text("anime_name is empty and anime_name has no file_id")
+
     else:
         update.message.reply_text("Please refer to /help")
         
     update.message.reply_text(f"{userdata.get('series_name')} - {userdata.get('episode_id')} almost done downloading on the server side!")
     filepath = getalltsfiles()
-    upload_status = subprocess.check_call("python uploaderService/main.py " +'"'+filepath+'"'+ ' ' + str(chat_id) + ' ' + (userdata.get('series_name')+str(userdata.get('episode_id'))), shell=True)
+    upload_status = subprocess.check_call("python uploaderService/main.py " +'"'+filepath+'"'+ ' ' + str(chat_id) + ' ' + (userdata.get('series_name')+'-'+str(userdata.get('episode_id'))), shell=True)
 
     
 def error(update, context):
     """Log Errors caused by Updates."""
-    logger.warning('Update "%s" caused error "%s"', update, context.error)
+    logger.warning('Update "%s" caused error "%s" and "%s"', update, context.error, context )
     update.message.reply_text("Something has went wrong!, Please retry :)")
-    
 
 def check_document(update, context):
     '''
@@ -75,8 +75,23 @@ def check_document(update, context):
     
     if user_id == configdata.get('agent_user_id'):
         file_id = update.message.video.file_id
-        caption = update.message.caption  
+        caption = update.message.caption
+        object_id = caption.split(":")[1]  
         end_user_chat_id = caption.split(":")[0]
+        series_name = object_id.split("-")[0]
+        episode_id = object_id.split("-")[1]
+
+        data2post = {
+            "series_name":series_name,
+            "episode_id":episode_id,
+            "file_id":file_id,
+            "times_queried":0,
+            "date_added":datetime.now()
+        }
+        logger.info('Got Posting data to mongoDB')
+        logger.info(data2post)
+        post_data_to_mongo = postData(data2post)
+        logger.info(post_data_to_mongo)
         #Keep in mind here i have to parse the chat_id from the caption above
         context.bot.send_video(end_user_chat_id,file_id,supports_streaming=True,timeout=120)
 
@@ -105,8 +120,7 @@ def main():
     # added handlers
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help))
-    dp.add_handler(CommandHandler("search", search))
-    dp.add_handler(CommandHandler("get", get))
+    dp.add_handler(CommandHandler("getanime", getanime))
     dp.add_handler(MessageHandler(Filters.text, debug_message))
     dp.add_handler(MessageHandler(Filters.video, check_document))
 

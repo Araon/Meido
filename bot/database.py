@@ -1,6 +1,9 @@
 from pymongo import MongoClient
 
-client = MongoClient('mongodb://localhost:27017/')
+
+MONGO_DB_URL = 'mongodb://localhost:27017/'
+
+client = MongoClient(MONGO_DB_URL)
 
 #database
 db = client["animeDatabase"]

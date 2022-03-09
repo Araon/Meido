@@ -34,7 +34,6 @@ Zoro  | 720p, 1080p | ✔️
 - [ ] Add subscription feature
 - [ ] Moar Bug fixes
 - [ ] Add support for linux
-    - [ ] Change file path 
 
 #### Status
 Still under development 🛠️

@@ -22,8 +22,12 @@ import logging
 logging.basicConfig(format='%(levelname)s - %(asctime)s - %(name)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-with open('uploaderService/config/agentConfig.json', 'r') as config:
-    configdata = json.load(config)
+try:
+    with open('uploaderService/config/agentConfig.json', 'w+') as config:
+        configdata = json.load(config)
+except:
+    raise Exception('CONFIG FILE NOT FOUND!')
+
 
 entity = configdata.get('entity') #session name - it doesn't matter what
 api_id = configdata.get('api_id')
@@ -44,11 +48,13 @@ async def callback(current, total):
 '''
 bot_name = the actual bot name
 file_path = where the file is downloaded
-chat_id = this is the end user chat_id, sent over caption to bot, so it can parse and send it to the correct user
-object_id = an internal id used for mapping of file_id and filename stored in the server(for optimization).
+chat_id = this is the end user chat_id, sent over caption to bot,
+            so it can parse and send it to the correct user
+object_id = an internal id used for mapping of file_id 
+            and filename stored in the server(for optimization).
 '''
 async def uploadVideo(bot_name,file_path,chat_id,object_id):
-    logger.info('UploadVideo Called')
+    logger.info('video uploading initiated')
     async with TelegramClient(entity, api_id, api_hash) as client:
         if not await client.is_user_authorized():
             #await client.send_code_request(phone) #at the first start - uncomment, after authorization to avoid FloodWait I advise you to comment

@@ -3,3 +3,5 @@ botConfig.json
 agentConfig.json
 images
 *.mp4
+dev
+__pycache__

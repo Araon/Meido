@@ -1,7 +1,6 @@
 import logging
 import json
 from datetime import datetime
-from turtle import up
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram.update import Update
 from botUtils import showhelp,parse_search_query,getalltsfiles
@@ -9,19 +8,23 @@ from database import getData, postData, updateData
 import subprocess
 import datetime
 
+BOT_VERSION = 0.1
 
 #enabling Logging
 logging.basicConfig(format='%(levelname)s - %(asctime)s - %(name)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-with open('bot/config/botConfig.json', 'r') as config:
-    configdata = json.load(config)
+try:
+    with open('bot/config/botConfig.json', 'w+') as config:
+        configdata = json.load(config)
+except:
+    raise Exception('CONFIG FILE NOT FOUND!')
 
 API_TOKEN = configdata.get("bot_token")
 
 
 def start(update,context):
-    update.message.reply_text("Thanks for using Araon Bot(v:0.01)\nThis is a alpha built so expect delayed response and many bugs\nIf you spot any issue feel free to reach out")
+    update.message.reply_text(f"Thanks for using Araon Bot({BOT_VERSION})\nThis is a alpha built so expect delayed response and many bugs\nIf you spot any issue feel free to reach out")
 
 
 def help(update,context):
@@ -30,15 +33,22 @@ def help(update,context):
     
 
 def getanime(update, context):
+    '''
+    Fetches the anime file on the mongo db and then if not found,
+    downloads the anime using animeld
+    '''
     logger.info('download function is called!')
+
     chat_id = update.message.chat_id
     rawUserInput = update.message.text
     userInput = rawUserInput[10:]
     
     if userInput and not userInput == " ":
         userdata = parse_search_query(userInput)
+
         update.message.reply_text(f"Checking Internal Db\nAnime: {userdata.get('series_name')}\nSeason: {userdata.get('season_id')}\nEpisode: {userdata.get('episode_id')}")
         logger.info('search_in_mongodb:"%s"', userdata)
+
         search_in_mongodb = userdata.pop('season_id')
         anime_name = getData(search_in_mongodb)
         if not anime_name:
@@ -55,7 +65,7 @@ def getanime(update, context):
     else:
         update.message.reply_text("Please refer to /help")
         
-    update.message.reply_text(f"{userdata.get('series_name')} - {userdata.get('episode_id')} almost done downloading on the server side!")
+    update.message.reply_text(f"{userdata.get('series_name')} - {userdata.get('episode_id')} is done downloading on the server side!")
     filepath = getalltsfiles()
     upload_status = subprocess.check_call("python uploaderService/main.py " +'"'+filepath+'"'+ ' ' + str(chat_id) + ' ' + (userdata.get('series_name')+'-'+str(userdata.get('episode_id'))), shell=True)
 
@@ -63,7 +73,7 @@ def getanime(update, context):
 def error(update, context):
     """Log Errors caused by Updates."""
     logger.warning('Update "%s" caused error "%s" and "%s"', update, context.error, context )
-    update.message.reply_text("Something has went wrong!, Please retry :)")
+    update.message.reply_text("Something has went wrong!, Please retry")
 
 def check_document(update, context):
     '''
@@ -92,6 +102,7 @@ def check_document(update, context):
         logger.info(data2post)
         post_data_to_mongo = postData(data2post)
         logger.info(post_data_to_mongo)
+        
         #Keep in mind here i have to parse the chat_id from the caption above
         context.bot.send_video(end_user_chat_id,file_id,supports_streaming=True,timeout=120)
 

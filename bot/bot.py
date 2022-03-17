@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+
+
 import logging
 import json
 from datetime import datetime
@@ -14,14 +17,14 @@ BOT_VERSION = 0.1
 logging.basicConfig(format='%(levelname)s - %(asctime)s - %(name)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+#fetching config file
 try:
     with open('bot/config/botConfig.json', 'w+') as config:
         configdata = json.load(config)
-except:
+except Exception as e:
     raise Exception('CONFIG FILE NOT FOUND!')
 
 API_TOKEN = configdata.get("bot_token")
-
 
 def start(update,context):
     update.message.reply_text(f"Thanks for using Araon Bot({BOT_VERSION})\nThis is a alpha built so expect delayed response and many bugs\nIf you spot any issue feel free to reach out")

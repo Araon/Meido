@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 #https://sudonull.com/post/62683-Telegram-bots-Uploading-files-larger-than-50mb
 
 '''
@@ -12,20 +13,21 @@ the agent must send the bot this file
 then the bot will receive own file_id for this file and will be able to dispose of it.
 
 '''
-
 from telethon import TelegramClient
 from telethon.tl.types import DocumentAttributeVideo
 import asyncio
 import json
 import logging
 
+# basic logging
 logging.basicConfig(format='%(levelname)s - %(asctime)s - %(name)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 try:
     with open('uploaderService/config/agentConfig.json', 'w+') as config:
         configdata = json.load(config)
-except:
+except Exception as e:
     raise Exception('CONFIG FILE NOT FOUND!')
 
 
@@ -37,13 +39,9 @@ phone =  configdata.get('phone')
 bot_name = configdata.get('bot_name')
 
 
-
-
-
 async def callback(current, total):
     # for upload progression
     logger.info('Uploaded: {:.2%}'.format(current / total))
-
 
 '''
 bot_name = the actual bot name
@@ -57,7 +55,8 @@ async def uploadVideo(bot_name,file_path,chat_id,object_id):
     logger.info('video uploading initiated')
     async with TelegramClient(entity, api_id, api_hash) as client:
         if not await client.is_user_authorized():
-            #await client.send_code_request(phone) #at the first start - uncomment, after authorization to avoid FloodWait I advise you to comment
+            #await client.send_code_request(phone) 
+            '''at the first start - uncomment, after authorization to avoid FloodWait I advise you to comment'''
             await client.sign_in(phone, input('Enter code: '))
         await client.send_file(
                             str(bot_name),
@@ -83,4 +82,4 @@ if __name__ == '__main__':
     import sys
     asyncio.run(main(sys.argv[0:]))
     
-# python uploader.py rainfall.mp4 rainfall chat_id narutos1ep34
+# python uploader.py <file_path> <caption> <chat_id> <object_id>

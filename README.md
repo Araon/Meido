@@ -1,8 +1,9 @@
+# Meido
 <p align="center">
-   <img src="https://raw.githubusercontent.com/Araon/Araon_chan/master/docs/meido.jpeg" width="250" height="250">
+   <img src="https://raw.githubusercontent.com/Araon/Araon_chan/master/docs/meido.jpeg" width="250" height="250" style="border-radius: 50%;">
 </p>
 
-# Meido
+
 ###### A Telegram bot to send anime directly to your inbox, This uses [animdl](https://github.com/justfoolingaround/animdl) for searching and downloading the file
 
 ### Websites used

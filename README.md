@@ -1,6 +1,6 @@
 # Meido
 <p align="center">
-   <img src="https://raw.githubusercontent.com/Araon/Araon_chan/master/docs/meido.jpeg" width="250" height="250" style="border-radius: 50%;">
+   <img src="https://raw.githubusercontent.com/Araon/Araon_chan/master/docs/meido.png" width="250" height="250" style="border-radius: 50%;">
 </p>
 
 

@@ -4,7 +4,7 @@
 </p>
 
 
-###### A Telegram bot to send anime directly to your inbox, This uses [animdl](https://github.com/justfoolingaround/animdl) for searching and downloading the file
+## A Telegram bot to send anime directly to your inbox, This uses [animdl](https://github.com/justfoolingaround/animdl) for searching and downloading the file
 
 ### Websites used
 Website  | Quality | Status

@@ -1,13 +1,9 @@
 <p align="center">
-   <img src="https://raw.githubusercontent.com/Araon/Araon_chan/master/docs/anime.png" width="250" height="250">
+   <img src="https://raw.githubusercontent.com/Araon/Araon_chan/master/docs/meido.jpeg" width="250" height="250">
 </p>
 
 # Meido
 ###### A Telegram bot to send anime directly to your inbox, This uses [animdl](https://github.com/justfoolingaround/animdl) for searching and downloading the file
-
-## [Architecture](https://github.com/Araon/Araon_chan/blob/master/docs/architechture.md)
-## [Database](https://github.com/Araon/Araon_chan/blob/master/docs/databaseSchema.md)
-
 
 ### Websites used
 Website  | Quality | Status
@@ -37,4 +33,3 @@ Zoro  | 720p, 1080p | ✔️
 
 #### Status
 Still under development 🛠️
-

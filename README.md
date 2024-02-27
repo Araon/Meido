@@ -6,23 +6,8 @@
 
 ### A Telegram bot to send anime directly to your inbox, This uses [animdl](https://github.com/justfoolingaround/animdl) for searching and downloading the file
 
-### Websites used
-Website  | Quality | Status
-------------- | ------------- | ------------
-9Animel  | 720p, 1080p | ✔️
-AllAnime  | 720p, 1080p | ✔️
-AnimePahe  | 720p, 1080p | ✔️
-AnimeOut  | 720p, 1080p | ❌
-Animixplay  | 480p, 720p, 1080p | ✔️
-Animtime  | 720p, 1080p | ✔️
-Crunchyroll  | 720p, 1080p | ✔️
-Kawaiifu (NSFW)   | 720p, 1080p | ❌
-GogoAnime  | 720p, 1080p | ✔️
-Haho (NSFW)  | 720p, 1080p | ✔️
-Tenshi  | 720p, 1080p | ✔️
-Twist  | 720p, 1080p | ✔️
-Zoro  | 720p, 1080p | ✔️
-
+### System Design
+[](docs/screenshot.png)
 
 ### To-do List
 

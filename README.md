@@ -7,7 +7,7 @@
 ### A Telegram bot to send anime directly to your inbox, This uses [animdl](https://github.com/justfoolingaround/animdl) for searching and downloading the file
 
 ### System Design
-[](docs/screenshot.png)
+![System Design](docs/screenshot.png)
 
 ### To-do List
 

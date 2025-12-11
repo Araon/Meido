@@ -4,7 +4,7 @@ Pytest configuration and shared fixtures
 import pytest
 import sys
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import AsyncMock, Mock, MagicMock, patch
 import json
 import tempfile
 import os
@@ -123,7 +123,7 @@ def mock_update():
     update.message.from_user.id = 123456789
     update.message.text = "/getanime Death Note, 1, 3"
     update.effective_chat.id = 987654321
-    update.message.reply_text = MagicMock()
+    update.message.reply_text = AsyncMock()
     return update
 
 @pytest.fixture
@@ -131,8 +131,8 @@ def mock_context():
     """Mock Telegram Context object"""
     context = MagicMock()
     context.bot = MagicMock()
-    context.bot.send_video = MagicMock()
-    context.bot.send_message = MagicMock()
+    context.bot.send_video = AsyncMock()
+    context.bot.send_message = AsyncMock()
     return context
 
 @pytest.fixture

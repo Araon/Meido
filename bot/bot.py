@@ -19,7 +19,12 @@ import subprocess
 BOT_VERSION = 0.1
 
 # Get the project root directory (parent of bot directory)
-PROJECT_ROOT = Path(__file__).parent.parent
+_project_root_override = os.getenv("MEIDO_PROJECT_ROOT") or os.getenv("TEST_PROJECT_ROOT")
+PROJECT_ROOT = (
+    Path(_project_root_override).expanduser().resolve()
+    if _project_root_override
+    else Path(__file__).parent.parent
+)
 
 # enabling Logging
 logging.basicConfig(

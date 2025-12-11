@@ -92,10 +92,9 @@ class TestGetAnimeCommand:
         """Test /getanime with valid query and cached data"""
         mock_update.message.text = "/getanime Death Note, 1, 3"
         
-        with patch('bot.bot.PROJECT_ROOT', Path(temp_config_dir.parent.parent)), \
-             patch('database.getData', return_value=sample_anime_data), \
-             patch('database.updateData') as mock_update_data, \
-             patch('bot.botUtils.normalize_series_name', return_value="death_note"):
+        with patch('bot.bot.getData', return_value=sample_anime_data), \
+             patch('bot.bot.updateData') as mock_update_data, \
+             patch('bot.bot.normalize_series_name', return_value="death_note"):
             
             from bot.bot import getanime
             
@@ -110,9 +109,8 @@ class TestGetAnimeCommand:
         """Test /getanime when anime is not in cache"""
         mock_update.message.text = "/getanime New Anime, 1, 1"
         
-        with patch('bot.bot.PROJECT_ROOT', Path(temp_config_dir.parent.parent)), \
-             patch('database.getData', return_value=None), \
-             patch('botUtils.getalltsfiles', return_value=None), \
+        with patch('bot.bot.getData', return_value=None), \
+             patch('bot.bot.getalltsfiles', return_value=None), \
              patch('subprocess.check_call') as mock_subprocess:
             
             from bot.bot import getanime
@@ -148,9 +146,11 @@ class TestGetAnimeCommand:
             "file_id": None
         }
         
-        with patch('bot.bot.PROJECT_ROOT', Path(temp_config_dir.parent.parent)), \
-             patch('database.getData', return_value=data_without_file_id), \
-             patch('bot.botUtils.normalize_series_name', return_value="death_note"):
+        with patch('bot.bot.getData', return_value=data_without_file_id), \
+             patch('bot.bot.updateData'), \
+             patch('bot.bot.normalize_series_name', return_value="death_note"), \
+             patch('bot.bot.getalltsfiles', return_value=None), \
+             patch('subprocess.check_call'):
             
             from bot.bot import getanime
             
@@ -158,8 +158,14 @@ class TestGetAnimeCommand:
             
             # Should send error message
             mock_update.message.reply_text.assert_called()
-            call_args = str(mock_update.message.reply_text.call_args)
-            assert "file_id" in call_args.lower() or "missing" in call_args.lower()
+            messages = [
+                (call.args[0] if call.args else "")
+                for call in mock_update.message.reply_text.call_args_list
+            ]
+            assert any(
+                ("file_id" in str(msg).lower()) or ("missing" in str(msg).lower())
+                for msg in messages
+            )
 
 
 class TestCheckDocument:
@@ -175,8 +181,8 @@ class TestCheckDocument:
         mock_update.message.caption = "987654321:death_note-s1-e3"
         mock_update.message.from_user.id = 123456789  # agent_user_id
         
-        with patch('database.postData') as mock_post, \
-             patch('database.getData', return_value=None):
+        with patch('bot.bot.postData') as mock_post, \
+             patch('bot.bot.getData', return_value=None):
             
             from bot.bot import check_document
             
@@ -231,8 +237,8 @@ class TestCheckDocument:
         mock_update.message.caption = "987654321:test_anime-s2-e5"
         mock_update.message.from_user.id = 123456789
         
-        with patch('database.postData') as mock_post, \
-             patch('database.getData', return_value=None):
+        with patch('bot.bot.postData') as mock_post, \
+             patch('bot.bot.getData', return_value=None):
             
             from bot.bot import check_document
             

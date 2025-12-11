@@ -50,9 +50,8 @@ class TestDownloadWorkflow:
         mock_update.message.text = "/getanime Test Anime, 1, 1"
         
         # Mock that anime is not in database
-        with patch('bot.bot.PROJECT_ROOT', Path(temp_config_dir.parent.parent)), \
-             patch('database.getData', return_value=None), \
-             patch('botUtils.getalltsfiles', return_value="/tmp/test.mp4"), \
+        with patch('bot.bot.getData', return_value=None), \
+             patch('bot.bot.getalltsfiles', return_value="/tmp/test.mp4"), \
              patch('subprocess.check_call') as mock_subprocess:
             
             from bot.bot import getanime
@@ -80,8 +79,8 @@ class TestUploadWorkflow:
             tmp_file_path = tmp_file.name
         
         try:
-            with patch('database.getData', return_value=None), \
-                 patch('botUtils.getalltsfiles', return_value=tmp_file_path), \
+            with patch('bot.bot.getData', return_value=None), \
+                 patch('bot.bot.getalltsfiles', return_value=tmp_file_path), \
                  patch('subprocess.check_call') as mock_subprocess:
                     
                     from bot.bot import getanime
@@ -105,8 +104,9 @@ class TestCachedWorkflow:
         """Test that cached content is delivered instantly"""
         mock_update.message.text = "/getanime Death Note, 1, 3"
         
-        with patch('database.getData', return_value=sample_anime_data), \
-             patch('database.updateData') as mock_update_data:
+        with patch('bot.bot.getData', return_value=sample_anime_data), \
+             patch('bot.bot.updateData') as mock_update_data, \
+             patch('subprocess.check_call') as mock_subprocess:
             
             from bot.bot import getanime
             
@@ -117,7 +117,7 @@ class TestCachedWorkflow:
             # Should update query count
             mock_update_data.assert_called_once()
             # Should not attempt download
-            assert not hasattr(mock_context.bot, 'download_called')
+            assert not mock_subprocess.called
 
 
 class TestErrorHandling:
@@ -128,7 +128,7 @@ class TestErrorHandling:
         """Test error handling when download fails"""
         mock_update.message.text = "/getanime Test Anime, 1, 1"
         
-        with patch('database.getData', return_value=None), \
+        with patch('bot.bot.getData', return_value=None), \
              patch('subprocess.check_call', side_effect=Exception("Download failed")):
             
             from bot.bot import getanime
@@ -137,16 +137,22 @@ class TestErrorHandling:
             
             # Should send error message to user
             mock_update.message.reply_text.assert_called()
-            call_args = str(mock_update.message.reply_text.call_args)
-            assert "error" in call_args.lower() or "retry" in call_args.lower()
+            messages = [
+                (call.args[0] if call.args else "")
+                for call in mock_update.message.reply_text.call_args_list
+            ]
+            assert any(
+                ("error" in str(msg).lower()) or ("retry" in str(msg).lower())
+                for msg in messages
+            )
     
     @pytest.mark.asyncio
     async def test_upload_error_handling(self, mock_update, mock_context, temp_config_dir):
         """Test error handling when upload fails"""
         mock_update.message.text = "/getanime Test Anime, 1, 1"
         
-        with patch('database.getData', return_value=None), \
-             patch('botUtils.getalltsfiles', return_value="/tmp/test.mp4"), \
+        with patch('bot.bot.getData', return_value=None), \
+             patch('bot.bot.getalltsfiles', return_value="/tmp/test.mp4"), \
              patch('subprocess.check_call', side_effect=[
                  None,  # Download succeeds
                  Exception("Upload failed")  # Upload fails

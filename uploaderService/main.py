@@ -20,6 +20,10 @@ from telethon.tl.types import DocumentAttributeVideo
 import asyncio
 import json
 import logging
+from pathlib import Path
+
+# Get the project root directory
+PROJECT_ROOT = Path(__file__).parent.parent
 
 # basic logging
 logging.basicConfig(
@@ -29,24 +33,46 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# Load config file
+config_path = PROJECT_ROOT / 'uploaderService' / 'config' / 'agentConfig.json'
 try:
-    with open('uploaderService/config/agentConfig.json', 'r') as config:
+    with open(config_path, 'r') as config:
         configdata = json.load(config)
-except Exception:
+except FileNotFoundError:
+    logger.error(f'Config file not found at {config_path}')
     raise Exception('CONFIG FILE NOT FOUND!')
-
+except json.JSONDecodeError as e:
+    logger.error(f'Invalid JSON in config file: {e}')
+    raise Exception('INVALID CONFIG FILE!')
 
 entity = configdata.get('entity')  # session name - it doesn't matter what
-api_id = configdata.get('api_id')
+api_id_raw = configdata.get('api_id')
 api_hash = configdata.get('api_hash')
 phone = configdata.get('phone')
-
 bot_name = configdata.get('bot_name')
+
+# Coerce api_id to int (Telethon expects an integer)
+try:
+    api_id = int(api_id_raw) if api_id_raw is not None else None
+except (TypeError, ValueError):
+    api_id = None
+
+# Validate required fields
+if not all([entity, api_id, api_hash, phone, bot_name]):
+    missing = [k for k, v in {
+        'entity': entity,
+        'api_id': api_id,
+        'api_hash': api_hash,
+        'phone': phone,
+        'bot_name': bot_name
+    }.items() if not v]
+    raise Exception(f'Missing required config fields: {", ".join(missing)}')
 
 
 async def callback(current, total):
     # for upload progression
-    logger.info('Uploaded: {:.2%}'.format(current / total))
+    if total > 0:
+        logger.info('Uploaded: {:.2%}'.format(current / total))
 
 
 '''
@@ -61,16 +87,30 @@ object_id = an internal id used for mapping of file_id
 
 async def uploadVideo(bot_name, file_path, chat_id, object_id):
     logger.info('video uploading initiated')
-    async with TelegramClient(entity, api_id, api_hash) as client:
+    
+    # Resolve file path
+    file_path = Path(file_path)
+    if not file_path.is_absolute():
+        file_path = PROJECT_ROOT / file_path
+    
+    if not file_path.exists():
+        raise FileNotFoundError(f'File not found: {file_path}')
+    
+    # Session file path
+    session_path = PROJECT_ROOT / f'{entity}.session'
+    
+    async with TelegramClient(str(session_path), api_id, api_hash) as client:
         if not await client.is_user_authorized():
             # await client.send_code_request(phone)
             # at the first start - uncomment, after authorization to avoid
             # FloodWait I advise you to comment
-            await client.sign_in(phone, input('Enter code: '))
+            code = input('Enter code: ')
+            await client.sign_in(phone, code)
+        
         await client.send_file(
             str(bot_name),
-            file_path,
-            caption=str(chat_id + ':' + object_id),
+            str(file_path),
+            caption=str(chat_id) + ':' + str(object_id),
             attributes=[DocumentAttributeVideo(0, 0, 0)],
             progress_callback=callback,
             part_size_kb=512,
@@ -81,6 +121,9 @@ async def uploadVideo(bot_name, file_path, chat_id, object_id):
 
 
 async def main(argv):
+    if len(argv) < 4:
+        raise ValueError('Usage: python main.py <file_path> <chat_id> <object_id>')
+    
     file_path = argv[1]
     chat_id = argv[2]
     object_id = argv[3]
@@ -90,6 +133,12 @@ async def main(argv):
 
 if __name__ == '__main__':
     import sys
-    asyncio.run(main(sys.argv[0:]))
+    try:
+        asyncio.run(main(sys.argv))
+    except KeyboardInterrupt:
+        logger.info('Interrupted by user')
+    except Exception as e:
+        logger.error(f'Error: {e}')
+        sys.exit(1)
 
-# python uploader.py <file_path> <caption> <chat_id> <object_id>
+# python uploaderService/main.py <file_path> <chat_id> <object_id>

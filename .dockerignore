@@ -1,0 +1,13 @@
+.git
+.github
+.venv*
+.env
+.sessions
+downloads
+*.log
+*.pid
+*.session
+__pycache__
+.pytest_cache
+htmlcov
+sidecars/**/node_modules

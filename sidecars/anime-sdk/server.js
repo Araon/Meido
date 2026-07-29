@@ -220,6 +220,29 @@ function normalizeTitle(value) {
 }
 
 
+function editDistance(left, right) {
+  const leftCharacters = Array.from(left);
+  const rightCharacters = Array.from(right);
+  let previous = rightCharacters.map((_, index) => index + 1);
+  previous.unshift(0);
+
+  for (const [leftIndex, leftCharacter] of leftCharacters.entries()) {
+    const current = [leftIndex + 1];
+    for (const [rightIndex, rightCharacter] of rightCharacters.entries()) {
+      current.push(
+        Math.min(
+          current[rightIndex] + 1,
+          previous[rightIndex + 1] + 1,
+          previous[rightIndex] + (leftCharacter === rightCharacter ? 0 : 1),
+        ),
+      );
+    }
+    previous = current;
+  }
+  return previous.at(-1);
+}
+
+
 function selectExactTitle(results, title, season) {
   const requested =
     season > 1 ? `${title} season ${season}` : title;
@@ -236,10 +259,74 @@ function selectExactTitle(results, title, season) {
     if (baseExact.length === 1) return baseExact[0];
   }
 
+  const fuzzyTarget =
+    season === 1 ? titleNormalized : requestedNormalized;
+  const maximumDistance = fuzzyTarget.length >= 20 ? 2 : 1;
+  const candidates = results
+    .map((result) => ({
+      result,
+      distance: editDistance(
+        normalizeTitle(result.title),
+        fuzzyTarget,
+      ),
+    }))
+    .sort((left, right) => left.distance - right.distance);
+  const closestDistance = candidates[0]?.distance;
+  const closest = candidates.filter(
+    (candidate) => candidate.distance === closestDistance,
+  );
+  if (
+    closestDistance != null &&
+    closestDistance <= maximumDistance &&
+    closest.length === 1
+  ) {
+    return closest[0].result;
+  }
+
   throw new SidecarError(
     "not_found",
     404,
     `no unambiguous exact match for ${requested}`,
+  );
+}
+
+
+async function findTitle(provider, title, season, report) {
+  const query = season > 1 ? `${title} Season ${season}` : title;
+  const resultsById = new Map();
+  const addResults = (results) => {
+    for (const result of results) resultsById.set(result.id, result);
+  };
+
+  addResults(await provider.search(query));
+  try {
+    return selectExactTitle([...resultsById.values()], title, season);
+  } catch (error) {
+    if (!(error instanceof SidecarError) || error.code !== "not_found") {
+      throw error;
+    }
+  }
+
+  const fallbackTerms = normalizeTitle(title)
+    .split(" ")
+    .filter((term) => term.length >= 4)
+    .slice(0, 3);
+  for (const term of fallbackTerms) {
+    report("searching", 0, `Trying broader title search: ${term}`);
+    addResults(await provider.search(term));
+    try {
+      return selectExactTitle([...resultsById.values()], title, season);
+    } catch (error) {
+      if (!(error instanceof SidecarError) || error.code !== "not_found") {
+        throw error;
+      }
+    }
+  }
+
+  throw new SidecarError(
+    "not_found",
+    404,
+    `no unambiguous close match for ${query}`,
   );
 }
 
@@ -560,10 +647,20 @@ async function prepareDownload(payload, outputPath, report) {
   }
   const language =
     payload.language === "dub" ? "dub" : "sub";
-  const query = season > 1 ? `${title} Season ${season}` : title;
   report("searching", 0, "Searching title");
-  const results = await provider.search(query);
-  const selectedTitle = selectExactTitle(results, title, season);
+  const selectedTitle = await findTitle(
+    provider,
+    title,
+    season,
+    report,
+  );
+  if (normalizeTitle(selectedTitle.title) !== normalizeTitle(title)) {
+    report(
+      "searching",
+      100,
+      `Matched title: ${selectedTitle.title}`,
+    );
+  }
   report("episodes", 0, "Loading episode list");
   const units = await provider.fetchContentUnits(selectedTitle.id);
   const unit = units.find(

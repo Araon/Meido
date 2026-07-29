@@ -18,6 +18,8 @@ def mock_update():
     update.message.text = "/getanime Death Note, 1, 3"
     update.message.reply_text = AsyncMock()
     update.message.reply_text.return_value.message_id = 555
+    update.callback_query = None
+    update.effective_message = update.message
     update.effective_chat.id = 987654321
     return update
 
@@ -28,6 +30,7 @@ def mock_context():
     context.bot.send_video = AsyncMock()
     context.bot.send_message = AsyncMock()
     context.bot.edit_message_text = AsyncMock()
+    context.user_data = {}
     return context
 
 

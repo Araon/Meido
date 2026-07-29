@@ -131,16 +131,23 @@ only when you intentionally want to delete Redis data and Telegram sessions.
 
 ## Bot commands
 
-- `/start` — confirm the bot is online.
-- `/help` — show command usage.
-- `/getanime <name>, <season>, <episode>` — return a cached episode or queue
-  one worker job.
+- `/start` or `/menu` — open the button-based home menu.
+- `/anime` or `/getanime` — start the guided title, season, episode, and
+  confirmation flow.
+- `/status` — show active requests with buttons to stop their updates.
+- `/cancel` — leave the current guided request.
+- `/help` — show the menu and quick-command syntax.
 
-Example:
+The guided flow is the default UX. The original one-line command remains
+available as a shortcut:
 
 ```text
 /getanime Death Note, 1, 3
 ```
+
+`Stop updates` removes that request from the current chat. If another chat is
+waiting for the same episode, the shared download continues and can still be
+cached for later requests.
 
 ## Local development
 

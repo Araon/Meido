@@ -26,6 +26,10 @@ def episode_key(series_key, season_id, episode_id):
     return f"{series_key}:s{int(season_id)}:e{int(episode_id)}"
 
 
+def chat_jobs_key(chat_id):
+    return f"meido:chat-jobs:{int(chat_id)}"
+
+
 def _now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -132,6 +136,8 @@ class RedisStore:
             pipeline.expire(f"meido:job:{job_id}", JOB_TTL_SECONDS)
             pipeline.sadd(f"meido:waiters:{job_id}", str(chat_id))
             pipeline.expire(f"meido:waiters:{job_id}", JOB_TTL_SECONDS)
+            pipeline.sadd(chat_jobs_key(chat_id), job_id)
+            pipeline.expire(chat_jobs_key(chat_id), JOB_TTL_SECONDS)
             pipeline.xadd(JOB_STREAM, {"job_id": job_id})
             pipeline.execute()
         except Exception:
@@ -144,6 +150,8 @@ class RedisStore:
         pipeline = self.client.pipeline()
         pipeline.sadd(key, str(chat_id))
         pipeline.expire(key, JOB_TTL_SECONDS)
+        pipeline.sadd(chat_jobs_key(chat_id), job_id)
+        pipeline.expire(chat_jobs_key(chat_id), JOB_TTL_SECONDS)
         pipeline.execute()
 
     def get_job(self, job_id):
@@ -165,6 +173,31 @@ class RedisStore:
             f"meido:waiters:{job_id}"
         ))
 
+    def get_active_jobs(self, chat_id):
+        key = chat_jobs_key(chat_id)
+        jobs = []
+        stale = []
+        for job_id in self.client.smembers(key):
+            job = self.get_job(job_id)
+            if not job or job.get("status") in {"ready", "failed"}:
+                stale.append(job_id)
+                continue
+            jobs.append(job)
+        if stale:
+            self.client.srem(key, *stale)
+        return sorted(
+            jobs,
+            key=lambda job: job.get("created_at", ""),
+            reverse=True,
+        )
+
+    def remove_waiter(self, job_id, chat_id):
+        pipeline = self.client.pipeline()
+        pipeline.srem(f"meido:waiters:{job_id}", str(chat_id))
+        pipeline.srem(chat_jobs_key(chat_id), job_id)
+        removed_waiter, _ = pipeline.execute()
+        return bool(removed_waiter)
+
     def set_progress_message(self, job_id, chat_id, message_id):
         key = f"meido:progress-messages:{job_id}"
         pipeline = self.client.pipeline()
@@ -183,6 +216,14 @@ class RedisStore:
 
     def clear_progress_messages(self, job_id):
         self.client.delete(f"meido:progress-messages:{job_id}")
+
+    def remove_progress_message(self, job_id, chat_id):
+        return bool(
+            self.client.hdel(
+                f"meido:progress-messages:{job_id}",
+                str(chat_id),
+            )
+        )
 
     def publish_progress(
         self,
@@ -236,6 +277,8 @@ class RedisStore:
         pipeline = self.client.pipeline()
         pipeline.delete(f"meido:job-for:{job['identity']}")
         pipeline.delete(f"meido:waiters:{job_id}")
+        for chat_id in waiters:
+            pipeline.srem(chat_jobs_key(chat_id), job_id)
         pipeline.execute()
         return waiters
 
@@ -313,7 +356,11 @@ class RedisStore:
 
     def take_failed_waiters(self, job_id):
         waiters = self.get_waiters(job_id)
-        self.client.delete(f"meido:waiters:{job_id}")
+        pipeline = self.client.pipeline()
+        pipeline.delete(f"meido:waiters:{job_id}")
+        for chat_id in waiters:
+            pipeline.srem(chat_jobs_key(chat_id), job_id)
+        pipeline.execute()
         return waiters
 
     def read_jobs(self, consumer_name, block_ms=5000, count=1):

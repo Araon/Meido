@@ -49,6 +49,24 @@ def test_duplicate_episode_uses_one_job_and_two_waiters():
     assert store.get_waiters(first_job) == [111, 222]
 
 
+def test_chat_can_list_and_leave_active_job():
+    store = fake_store()
+    job_id, _ = store.enqueue_episode(
+        series_key="fairy_tail",
+        series_name="Fairy Tail",
+        season_id=1,
+        episode_id=2,
+        chat_id=111,
+    )
+
+    active = store.get_active_jobs(111)
+    assert [job["job_id"] for job in active] == [job_id]
+
+    assert store.remove_waiter(job_id, 111) is True
+    assert store.get_waiters(job_id) == []
+    assert store.get_active_jobs(111) == []
+
+
 def test_complete_job_caches_file_and_returns_waiters():
     store = fake_store()
     job_id, _ = store.enqueue_episode(
@@ -64,6 +82,7 @@ def test_complete_job_caches_file_and_returns_waiters():
     assert waiters == [111]
     assert store.get_episode("death_note", 1, 3)["file_id"] == "file-id"
     assert store.client.get("meido:job-for:death_note:s1:e3") is None
+    assert store.get_active_jobs(111) == []
 
 
 def test_progress_messages_and_events_round_trip():

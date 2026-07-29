@@ -5,9 +5,14 @@ import re
 
 def showhelp():
     return (
-        "Available commands:\n"
-        "/getanime <name>, <season>, <episode> - download an anime episode\n"
-        "Example: /getanime Death Note, 1, 3"
+        "How to use Meido\n\n"
+        "Tap “Get anime” for the guided button flow, or use the quick "
+        "command:\n"
+        "/getanime <name>, <season>, <episode>\n\n"
+        "Example:\n"
+        "/getanime Death Note, 1, 3\n\n"
+        "/status shows active requests.\n"
+        "/cancel exits the guided flow."
     )
 
 

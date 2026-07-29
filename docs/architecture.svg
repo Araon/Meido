@@ -1,0 +1,232 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1790" height="820" viewBox="0 0 1790 820" role="img" aria-labelledby="title description">
+  <title id="title">Meido system architecture</title>
+  <desc id="description">Telegram requests flow through the bot and Redis to parallel download workers, an isolated anime-sdk sidecar, a shared media volume, parallel Telegram upload workers, and back to the bot for acknowledgement and delivery.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 L 3 5 Z" fill="#c9cccc"/>
+    </marker>
+    <filter id="rough" x="-3%" y="-3%" width="106%" height="106%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="1" seed="17" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.25" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <style>
+      .background { fill: #151616; }
+      .section { fill: none; stroke: #969b9b; stroke-width: 1.5; stroke-dasharray: 2 5; }
+      .panel { fill: #171818; stroke: #bec2c2; stroke-width: 1.7; }
+      .panel-ghost { fill: none; stroke: #767b7b; stroke-width: 1; opacity: .7; }
+      .accent { fill: none; stroke: #6f82b5; stroke-width: 4; }
+      .flow { fill: none; stroke: #c9cccc; stroke-width: 1.8; marker-end: url(#arrow); }
+      .flow-ghost { fill: none; stroke: #737878; stroke-width: 1; opacity: .7; }
+      .title { fill: #f1f2f2; font: 21px "Courier New", monospace; letter-spacing: .3px; }
+      .section-title { fill: #858b8b; font: 14px "Courier New", monospace; letter-spacing: 2px; }
+      .body { fill: #e2e4e4; font: 16px "Courier New", monospace; }
+      .small { fill: #c8cccc; font: 14px "Courier New", monospace; }
+      .muted { fill: #949a9a; font: 13px "Courier New", monospace; }
+      .label { fill: #d9dcdc; font: 13px "Courier New", monospace; }
+      .bubble { fill: #242626; stroke: #747b7b; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect class="background" width="1790" height="820"/>
+
+  <!-- Telegram boundary -->
+  <rect class="section" x="25" y="48" width="545" height="724" rx="27"/>
+  <text class="section-title" x="48" y="78">TELEGRAM</text>
+
+  <!-- Phone / requesting chat -->
+  <g filter="url(#rough)">
+    <rect class="accent" x="52" y="130" width="250" height="510" rx="47"/>
+    <rect class="panel" x="58" y="136" width="239" height="499" rx="42"/>
+    <rect class="panel-ghost" x="61" y="139" width="235" height="496" rx="40"/>
+  </g>
+  <rect x="126" y="137" width="100" height="20" rx="9" fill="#151616"/>
+  <text class="muted" x="80" y="177">9:41</text>
+  <text class="title" x="109" y="211">Meido bot</text>
+  <line x1="69" y1="225" x2="286" y2="225" stroke="#565b5b"/>
+
+  <rect class="bubble" x="80" y="250" width="196" height="67" rx="14"/>
+  <text class="small" x="94" y="274">/getanime Fairy Tail,</text>
+  <text class="small" x="94" y="296">1, 2</text>
+
+  <rect class="bubble" x="72" y="341" width="202" height="91" rx="14"/>
+  <text class="small" x="86" y="365">Downloading</text>
+  <text class="body" x="86" y="392">[######----] 64%</text>
+  <text class="muted" x="86" y="414">animeparadise</text>
+
+  <rect class="bubble" x="72" y="458" width="203" height="119" rx="14"/>
+  <rect x="85" y="473" width="176" height="65" rx="8" fill="#202222" stroke="#606767"/>
+  <path d="M 157 487 L 157 525 L 189 506 Z" fill="none" stroke="#c9cccc" stroke-width="2"/>
+  <text class="small" x="86" y="560">Ready - S01E02</text>
+
+  <!-- Bot and Telethon client -->
+  <g filter="url(#rough)">
+    <ellipse class="panel" cx="430" cy="226" rx="105" ry="62"/>
+    <ellipse class="panel-ghost" cx="433" cy="228" rx="104" ry="61"/>
+  </g>
+  <text class="title" x="359" y="221">Telegram bot</text>
+  <text class="muted" x="371" y="245">I/O + cache hits</text>
+
+  <g filter="url(#rough)">
+    <ellipse class="panel" cx="430" cy="594" rx="112" ry="69"/>
+    <ellipse class="panel-ghost" cx="427" cy="597" rx="111" ry="68"/>
+  </g>
+  <text class="title" x="348" y="588">Telegram user</text>
+  <text class="title" x="385" y="612">client</text>
+  <text class="muted" x="352" y="638">one saved session</text>
+
+  <path class="flow-ghost" d="M 302 272 C 332 266 343 252 362 243"/>
+  <path class="flow" d="M 302 270 C 333 265 345 252 363 241"/>
+  <text class="label" x="307" y="250">request</text>
+
+  <path class="flow-ghost" d="M 357 264 C 327 307 311 412 300 493"/>
+  <path class="flow" d="M 354 262 C 326 309 310 412 298 494"/>
+  <text class="label" x="309" y="374">cached / ready video</text>
+
+  <path class="flow-ghost" d="M 430 525 C 430 445 432 368 430 290"/>
+  <path class="flow" d="M 428 525 C 429 444 431 369 430 290"/>
+  <text class="label" x="442" y="416">staging video</text>
+  <text class="muted" x="442" y="436">meido:&lt;job_id&gt;</text>
+
+  <!-- Redis coordination layer -->
+  <g filter="url(#rough)">
+    <rect class="panel" x="645" y="94" width="335" height="355" rx="22"/>
+    <rect class="panel-ghost" x="650" y="91" width="330" height="356" rx="21"/>
+  </g>
+  <text class="section-title" x="665" y="124">PERSISTENT CONTROL PLANE</text>
+  <text class="title" x="665" y="163">Redis 7.4 + AOF</text>
+
+  <rect class="bubble" x="671" y="187" width="282" height="49" rx="10"/>
+  <text class="body" x="690" y="218">jobs stream</text>
+  <text class="muted" x="844" y="218">download</text>
+
+  <rect class="bubble" x="671" y="250" width="282" height="49" rx="10"/>
+  <text class="body" x="690" y="281">uploads stream</text>
+  <text class="muted" x="854" y="281">job ID</text>
+
+  <rect class="bubble" x="671" y="313" width="282" height="49" rx="10"/>
+  <text class="body" x="690" y="344">events + progress</text>
+
+  <rect class="bubble" x="671" y="376" width="282" height="49" rx="10"/>
+  <text class="body" x="690" y="402">file_id cache / retries</text>
+  <text class="muted" x="690" y="419">locks + waiting chats</text>
+
+  <path class="flow-ghost" d="M 535 211 C 575 188 604 174 645 170"/>
+  <path class="flow" d="M 535 209 C 577 187 606 173 645 168"/>
+  <text class="label" x="552" y="160">cache / queue</text>
+
+  <path class="flow-ghost" d="M 645 332 C 605 325 573 298 528 270"/>
+  <path class="flow" d="M 645 330 C 603 322 570 296 528 268"/>
+  <text class="label" x="544" y="315">progress / failure</text>
+
+  <!-- Download worker pool -->
+  <g filter="url(#rough)">
+    <rect class="panel" x="1052" y="80" width="285" height="240" rx="22"/>
+    <rect class="panel-ghost" x="1055" y="84" width="282" height="238" rx="21"/>
+  </g>
+  <text class="section-title" x="1073" y="111">DOWNLOAD POOL</text>
+  <text class="title" x="1073" y="149">Python workers x2</text>
+  <text class="body" x="1073" y="186">&gt; HTTP fallback router</text>
+  <text class="body" x="1073" y="216">&gt; progress reporter</text>
+  <text class="body" x="1073" y="246">&gt; FFprobe validation</text>
+  <text class="body" x="1073" y="276">&gt; retry scheduler</text>
+  <text class="muted" x="1073" y="301">no provider packages</text>
+
+  <path class="flow-ghost" d="M 980 203 C 1007 202 1027 202 1052 202"/>
+  <path class="flow" d="M 980 201 C 1008 200 1027 200 1052 200"/>
+  <text class="label" x="1005" y="184">job</text>
+
+  <path class="flow-ghost" d="M 1052 276 C 1018 307 998 327 969 347"/>
+  <path class="flow" d="M 1052 273 C 1017 304 996 325 969 344"/>
+  <text class="label" x="987" y="338">events</text>
+
+  <!-- Isolated downloader sidecar -->
+  <rect class="section" x="1390" y="48" width="370" height="480" rx="27"/>
+  <text class="section-title" x="1412" y="78">ISOLATED DOWNLOADER SIDECAR</text>
+
+  <g filter="url(#rough)">
+    <rect class="panel" x="1415" y="96" width="320" height="405" rx="21"/>
+    <rect class="panel-ghost" x="1419" y="93" width="316" height="407" rx="20"/>
+  </g>
+  <text class="title" x="1441" y="133">anime-sdk 1.1.0</text>
+  <text class="small" x="1441" y="162">versioned HTTP contract</text>
+  <text class="small" x="1441" y="187">parallel HLS segments x3</text>
+
+  <rect class="bubble" x="1442" y="219" width="125" height="73" rx="12"/>
+  <text class="small" x="1455" y="248">AnimeParadise</text>
+  <text class="muted" x="1455" y="270">provider</text>
+
+  <rect class="bubble" x="1581" y="219" width="125" height="73" rx="12"/>
+  <text class="small" x="1607" y="248">Gogo</text>
+  <text class="muted" x="1596" y="270">provider</text>
+
+  <rect class="bubble" x="1442" y="309" width="125" height="73" rx="12"/>
+  <text class="small" x="1470" y="338">Anikoto</text>
+  <text class="muted" x="1455" y="360">provider</text>
+
+  <rect class="bubble" x="1581" y="309" width="125" height="73" rx="12"/>
+  <text class="small" x="1604" y="338">MegaPlay</text>
+  <text class="muted" x="1596" y="360">provider</text>
+
+  <text class="body" x="1442" y="422">&gt; search + close title match</text>
+  <text class="body" x="1442" y="450">&gt; resolve + ordered fallback</text>
+  <text class="body" x="1442" y="478">&gt; stream normalized MP4</text>
+
+  <path class="flow-ghost" d="M 1337 158 C 1363 146 1380 143 1415 143"/>
+  <path class="flow" d="M 1337 156 C 1364 144 1383 141 1415 141"/>
+  <text class="label" x="1360" y="127">HTTP</text>
+
+  <path class="flow-ghost" d="M 1415 468 C 1370 444 1342 388 1307 319"/>
+  <path class="flow" d="M 1415 465 C 1368 441 1341 385 1306 317"/>
+  <text class="label" x="1347" y="410">MP4 stream</text>
+
+  <!-- Shared media and uploader -->
+  <g filter="url(#rough)">
+    <path class="panel" d="M 1060 579 C 1060 559 1120 550 1198 550 C 1274 550 1335 559 1335 579 L 1335 699 C 1335 720 1274 730 1198 730 C 1120 730 1060 720 1060 699 Z"/>
+    <ellipse class="panel-ghost" cx="1198" cy="579" rx="137" ry="28"/>
+  </g>
+  <text class="section-title" x="1092" y="610">SHARED MEDIA VOLUME</text>
+  <text class="title" x="1111" y="646">validated MP4</text>
+  <text class="small" x="1103" y="676">job media_path</text>
+  <text class="muted" x="1103" y="701">deleted after upload</text>
+
+  <g filter="url(#rough)">
+    <rect class="panel" x="650" y="548" width="330" height="185" rx="23"/>
+    <rect class="panel-ghost" x="654" y="545" width="326" height="187" rx="22"/>
+  </g>
+  <text class="section-title" x="674" y="580">UPLOAD POOL</text>
+  <text class="title" x="674" y="620">async upload tasks x2</text>
+  <text class="body" x="674" y="654">&gt; one persistent client</text>
+  <text class="body" x="674" y="682">&gt; exact bot identity check</text>
+  <text class="body" x="674" y="710">&gt; independent retries</text>
+
+  <path class="flow-ghost" d="M 1188 320 C 1187 400 1189 475 1193 551"/>
+  <path class="flow" d="M 1186 320 C 1185 401 1188 478 1191 551"/>
+  <text class="label" x="1202" y="430">validated media</text>
+
+  <path class="flow-ghost" d="M 1052 253 C 1024 252 1004 274 980 276"/>
+  <path class="flow" d="M 1052 251 C 1023 250 1003 272 980 274"/>
+  <text class="label" x="986" y="238">upload job</text>
+
+  <path class="flow-ghost" d="M 810 449 C 810 480 811 514 811 548"/>
+  <path class="flow" d="M 808 449 C 808 482 809 514 809 548"/>
+  <text class="label" x="821" y="510">consume</text>
+
+  <path class="flow-ghost" d="M 1060 651 C 1030 649 1007 646 980 645"/>
+  <path class="flow" d="M 1060 648 C 1032 647 1008 644 980 643"/>
+  <text class="label" x="993" y="630">read MP4</text>
+
+  <path class="flow-ghost" d="M 650 653 C 603 651 563 633 539 614"/>
+  <path class="flow" d="M 650 650 C 603 648 565 631 539 612"/>
+  <text class="label" x="550" y="674">Telethon upload</text>
+
+  <path class="flow-ghost" d="M 680 548 C 648 516 652 476 702 449"/>
+  <path class="flow" d="M 678 546 C 646 514 650 474 700 449"/>
+  <text class="label" x="600" y="503">upload progress</text>
+
+  <!-- Acknowledgement note -->
+  <path class="flow-ghost" d="M 535 246 C 584 254 607 266 645 278"/>
+  <path class="flow" d="M 535 244 C 585 252 610 263 645 276"/>
+  <text class="label" x="549" y="241">ack + cache file_id</text>
+
+  <text class="muted" x="1420" y="780">Redis stores state, not video bytes.</text>
+</svg>

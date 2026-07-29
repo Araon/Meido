@@ -1,166 +1,167 @@
-"""
-Integration tests for the bot workflow
-"""
+"""Integration-level tests for the background worker workflow."""
+
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-import sys
-from pathlib import Path
-from unittest.mock import MagicMock, patch, AsyncMock
-import tempfile
-import os
-
-# Add project root to path
-PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
-
-# Add bot directory to path for relative imports
-BOT_DIR = PROJECT_ROOT / 'bot'
-if str(BOT_DIR) not in sys.path:
-    sys.path.insert(0, str(BOT_DIR))
-
-# Map relative imports to absolute imports
-import bot.botUtils as botUtils_module
-import bot.database as database_module
-sys.modules['botUtils'] = botUtils_module
-sys.modules['database'] = database_module
-
-# Mock telegram imports before importing bot
-if 'telegram' not in sys.modules:
-    telegram_mock = MagicMock()
-    telegram_mock.Update = MagicMock
-    telegram_mock.ext = MagicMock()
-    telegram_mock.ext.Application = MagicMock
-    telegram_mock.ext.CommandHandler = MagicMock
-    telegram_mock.ext.MessageHandler = MagicMock
-    telegram_mock.ext.ContextTypes = MagicMock()
-    telegram_mock.ext.filters = MagicMock()
-    telegram_mock.ext.filters.TEXT = MagicMock()
-    telegram_mock.ext.filters.COMMAND = MagicMock()
-    telegram_mock.ext.filters.VIDEO = MagicMock()
-    
-    sys.modules['telegram'] = telegram_mock
-    sys.modules['telegram.ext'] = telegram_mock.ext
+from downloaderService.contracts import AdapterError, DownloadFailed
+from worker.main import ProgressReporter, process_job
+from worker.upload_main import process_upload_job
 
 
-class TestDownloadWorkflow:
-    """Integration tests for download workflow"""
-    
-    @pytest.mark.asyncio
-    async def test_full_download_workflow(self, mock_update, mock_context, temp_config_dir):
-        """Test complete workflow from request to download"""
-        mock_update.message.text = "/getanime Test Anime, 1, 1"
-        
-        # Mock that anime is not in database
-        with patch('bot.bot.getData', return_value=None), \
-             patch('bot.bot.getalltsfiles', return_value="/tmp/test.mp4"), \
-             patch('subprocess.check_call') as mock_subprocess:
-            
-            from bot.bot import getanime
-            
-            await getanime(mock_update, mock_context)
-            
-            # Verify download was attempted
-            assert mock_subprocess.called
-            # Should have called downloader service
-            call_args = str(mock_subprocess.call_args)
-            assert "downloaderService" in call_args or "main.py" in call_args
+def settings(tmp_path):
+    return SimpleNamespace(
+        download_root=tmp_path,
+        downloader_max_job_attempts=3,
+        downloader_retry_delay_seconds=60,
+        upload_max_job_attempts=3,
+        upload_retry_delay_seconds=60,
+    )
 
 
-class TestUploadWorkflow:
-    """Integration tests for upload workflow"""
-    
-    @pytest.mark.asyncio
-    async def test_upload_after_download(self, mock_update, mock_context, temp_config_dir):
-        """Test upload workflow after download"""
-        mock_update.message.text = "/getanime Test Anime, 1, 1"
-        
-        # Create a temporary mp4 file
-        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_file:
-            tmp_file.write(b"fake video data")
-            tmp_file_path = tmp_file.name
-        
-        try:
-            with patch('bot.bot.getData', return_value=None), \
-                 patch('bot.bot.getalltsfiles', return_value=tmp_file_path), \
-                 patch('subprocess.check_call') as mock_subprocess:
-                    
-                    from bot.bot import getanime
-                    
-                    await getanime(mock_update, mock_context)
-                    
-                    # Verify both download and upload were called
-                    assert mock_subprocess.call_count >= 1
-        finally:
-            # Cleanup
-            if os.path.exists(tmp_file_path):
-                os.unlink(tmp_file_path)
+def job():
+    return {
+        "job_id": "job123",
+        "series_key": "death_note",
+        "series_name": "Death Note",
+        "season_id": 1,
+        "episode_id": 3,
+        "attempts": "0",
+    }
 
 
-class TestCachedWorkflow:
-    """Integration tests for cached content workflow"""
-    
-    @pytest.mark.asyncio
-    async def test_cached_content_instant_delivery(self, mock_update, mock_context, 
-                                                   temp_config_dir, sample_anime_data):
-        """Test that cached content is delivered instantly"""
-        mock_update.message.text = "/getanime Death Note, 1, 3"
-        
-        with patch('bot.bot.getData', return_value=sample_anime_data), \
-             patch('bot.bot.updateData') as mock_update_data, \
-             patch('subprocess.check_call') as mock_subprocess:
-            
-            from bot.bot import getanime
-            
-            await getanime(mock_update, mock_context)
-            
-            # Should send video immediately without downloading
-            mock_context.bot.send_video.assert_called_once()
-            # Should update query count
-            mock_update_data.assert_called_once()
-            # Should not attempt download
-            assert not mock_subprocess.called
+def test_worker_downloads_and_queues_upload(tmp_path):
+    store = MagicMock()
+    store.get_job.return_value = job()
+    downloader = MagicMock()
+    media_file = tmp_path / "episode.mp4"
+    media_file.write_bytes(b"video")
+    downloader.download.return_value = media_file
+
+    process_job(store, settings(tmp_path), downloader, "job123")
+
+    downloader.download.assert_called_once()
+    assert media_file.exists()
+    store.enqueue_upload.assert_called_once_with("job123")
+    store.update_job.assert_any_call(
+        "job123",
+        "downloaded",
+        media_path=str(media_file.resolve()),
+    )
 
 
-class TestErrorHandling:
-    """Integration tests for error handling"""
-    
-    @pytest.mark.asyncio
-    async def test_download_error_handling(self, mock_update, mock_context, temp_config_dir):
-        """Test error handling when download fails"""
-        mock_update.message.text = "/getanime Test Anime, 1, 1"
-        
-        with patch('bot.bot.getData', return_value=None), \
-             patch('subprocess.check_call', side_effect=Exception("Download failed")):
-            
-            from bot.bot import getanime
-            
-            await getanime(mock_update, mock_context)
-            
-            # Should send error message to user
-            mock_update.message.reply_text.assert_called()
-            messages = [
-                (call.args[0] if call.args else "")
-                for call in mock_update.message.reply_text.call_args_list
-            ]
-            assert any(
-                ("error" in str(msg).lower()) or ("retry" in str(msg).lower())
-                for msg in messages
+@pytest.mark.asyncio
+async def test_uploader_sends_and_waits_for_bot_confirmation(tmp_path):
+    store = MagicMock()
+    upload_job = job()
+    media_file = tmp_path / "episode.mp4"
+    media_file.write_bytes(b"video")
+    upload_job["media_path"] = str(media_file)
+    store.get_job.return_value = upload_job
+
+    with patch(
+        "worker.upload_main.upload_video_with_client",
+        new=AsyncMock(return_value=SimpleNamespace(id=77)),
+    ) as upload:
+        await process_upload_job(
+            store,
+            settings(tmp_path),
+            MagicMock(),
+            MagicMock(),
+            "job123",
+        )
+
+    upload.assert_awaited_once()
+    store.update_job.assert_any_call(
+        "job123",
+        "awaiting_bot",
+        telegram_message_id=77,
+    )
+    assert not media_file.exists()
+
+
+@pytest.mark.asyncio
+async def test_uploader_schedules_retry(tmp_path):
+    store = MagicMock()
+    upload_job = job()
+    media_file = tmp_path / "episode.mp4"
+    media_file.write_bytes(b"video")
+    upload_job["media_path"] = str(media_file)
+    store.get_job.return_value = upload_job
+
+    with patch(
+        "worker.upload_main.upload_video_with_client",
+        new=AsyncMock(side_effect=ConnectionError("offline")),
+    ), patch("worker.upload_main.time.time", return_value=1_000):
+        await process_upload_job(
+            store,
+            settings(tmp_path),
+            MagicMock(),
+            MagicMock(),
+            "job123",
+        )
+
+    store.schedule_upload_retry.assert_called_once()
+    assert store.schedule_upload_retry.call_args.args[2] == 1_060
+    assert media_file.exists()
+
+
+def test_worker_schedules_transient_failure_without_immediate_retry(tmp_path):
+    store = MagicMock()
+    store.get_job.return_value = job()
+    downloader = MagicMock()
+    downloader.download.side_effect = DownloadFailed(
+        [
+            (
+                "animeparadise",
+                AdapterError(
+                    "temporary",
+                    "provider unavailable",
+                    retryable=True,
+                    retry_after=300,
+                ),
             )
-    
-    @pytest.mark.asyncio
-    async def test_upload_error_handling(self, mock_update, mock_context, temp_config_dir):
-        """Test error handling when upload fails"""
-        mock_update.message.text = "/getanime Test Anime, 1, 1"
-        
-        with patch('bot.bot.getData', return_value=None), \
-             patch('bot.bot.getalltsfiles', return_value="/tmp/test.mp4"), \
-             patch('subprocess.check_call', side_effect=[
-                 None,  # Download succeeds
-                 Exception("Upload failed")  # Upload fails
-             ]):
-            
-            from bot.bot import getanime
-            
-            await getanime(mock_update, mock_context)
-            
-            # Should handle error gracefully
-            mock_update.message.reply_text.assert_called()
+        ]
+    )
+
+    with patch("worker.main.time.time", return_value=1_000):
+        process_job(store, settings(tmp_path), downloader, "job123")
+
+    store.schedule_retry.assert_called_once()
+    assert store.schedule_retry.call_args.args[2] == 1_300
+    store.fail_job.assert_not_called()
+
+
+def test_worker_fails_non_retryable_download(tmp_path):
+    store = MagicMock()
+    store.get_job.return_value = job()
+    downloader = MagicMock()
+    downloader.download.side_effect = DownloadFailed(
+        [
+            (
+                "animeparadise",
+                AdapterError("not_found", "episode unavailable"),
+            )
+        ]
+    )
+
+    process_job(store, settings(tmp_path), downloader, "job123")
+
+    store.fail_job.assert_called_once()
+    store.schedule_retry.assert_not_called()
+
+
+def test_progress_reporter_throttles_small_same_phase_updates():
+    store = MagicMock()
+    clock = [100.0]
+    reporter = ProgressReporter(store, "job123", clock=lambda: clock[0])
+
+    reporter({"phase": "downloading", "percent": 10})
+    reporter({"phase": "downloading", "percent": 12})
+    reporter({"phase": "downloading", "percent": 15})
+    reporter({"phase": "uploading", "percent": 0})
+
+    assert store.publish_progress.call_count == 3
+    assert store.publish_progress.call_args_list[0].kwargs["percent"] == 10
+    assert store.publish_progress.call_args_list[1].kwargs["percent"] == 15
+    assert store.publish_progress.call_args_list[2].kwargs["phase"] == "uploading"

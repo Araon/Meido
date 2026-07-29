@@ -1,0 +1,90 @@
+services:
+  redis:
+    image: redis:7.4-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+
+  bot:
+    build:
+      context: .
+      dockerfile: docker/bot.Dockerfile
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  downloader-anime-sdk:
+    build:
+      context: .
+      dockerfile: docker/anime-sdk.Dockerfile
+    environment:
+      ANIME_SDK_PROVIDERS: ${ANIME_SDK_PROVIDERS:-animeparadise,gogoanime,anikoto,megaplay}
+      ANIME_SDK_SEGMENT_CONCURRENCY: ${ANIME_SDK_SEGMENT_CONCURRENCY:-3}
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://localhost:8080/health/ready').then(r=>{if(!r.ok)process.exit(1)})
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DOWNLOAD_ROOT: /data/downloads
+    restart: unless-stopped
+    volumes:
+      - downloads:/data/downloads
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  uploader:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    command: ["python", "-m", "worker.upload_main"]
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DOWNLOAD_ROOT: /data/downloads
+      TELEGRAM_SESSION_ROOT: /data/sessions
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    volumes:
+      - downloads:/data/downloads
+      - telegram-sessions:/data/sessions
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  redis-data:
+  downloads:
+  telegram-sessions:

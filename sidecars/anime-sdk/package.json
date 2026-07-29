@@ -1,0 +1,12 @@
+{
+  "name": "meido-anime-sdk-sidecar",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "anime-sdk": "1.1.0"
+  }
+}

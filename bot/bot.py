@@ -1,30 +1,32 @@
 #!/usr/bin/env python3
 
 import logging
-import json
 import sys
-import os
+import socket
 from pathlib import Path
-from datetime import datetime
+
+# Support both `python -m bot.bot` and direct script execution.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from telegram import Update
+from telegram.error import BadRequest
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, ContextTypes, filters
 )
-from botUtils import (
-    showhelp, parse_search_query, getalltsfiles, normalize_series_name, get_download_path
+from meido_settings import load_settings
+from bot.commands import (
+    showhelp,
+    parse_search_query,
+    normalize_series_name,
+    validate_search_query,
 )
-from database import getData, postData, updateData
-import subprocess
+from bot.store import initialize_store
 
 BOT_VERSION = 0.1
-
-# Get the project root directory (parent of bot directory)
-_project_root_override = os.getenv("MEIDO_PROJECT_ROOT") or os.getenv("TEST_PROJECT_ROOT")
-PROJECT_ROOT = (
-    Path(_project_root_override).expanduser().resolve()
-    if _project_root_override
-    else Path(__file__).parent.parent
-)
+SETTINGS = None
+STORE = None
 
 # enabling Logging
 logging.basicConfig(
@@ -32,22 +34,68 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+# HTTPX logs Telegram API URLs, which contain the bot token.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("apscheduler.executors.default").setLevel(logging.WARNING)
 
-# fetching config file
-config_path = PROJECT_ROOT / 'bot' / 'config' / 'botConfig.json'
-try:
-    with open(config_path, 'r') as config:
-        configdata = json.load(config)
-except FileNotFoundError:
-    logger.error(f'Config file not found at {config_path}')
-    raise Exception('CONFIG FILE NOT FOUND!')
-except json.JSONDecodeError as e:
-    logger.error(f'Invalid JSON in config file: {e}')
-    raise Exception('INVALID CONFIG FILE!')
+PHASE_LABELS = {
+    "starting": "Starting",
+    "searching": "Searching",
+    "episodes": "Loading episodes",
+    "resolving": "Resolving stream",
+    "downloading": "Downloading",
+    "muxing": "Preparing MP4",
+    "prepared": "Download prepared",
+    "streaming": "Transferring to worker",
+    "complete": "Download complete",
+    "validating": "Validating media",
+    "upload_queued": "Waiting for upload slot",
+    "uploading": "Uploading to Telegram",
+    "awaiting_bot": "Waiting for bot confirmation",
+}
 
-API_TOKEN = configdata.get("bot_token")
-if not API_TOKEN:
-    raise Exception('bot_token not found in config file!')
+
+def progress_bar(percent, width=10):
+    completed = round(max(0, min(100, percent)) / 100 * width)
+    return "█" * completed + "░" * (width - completed)
+
+
+def format_progress_message(job, progress):
+    percent = max(0, min(100, int(progress.get("percent", 0))))
+    phase = progress.get("phase", "downloading")
+    label = PHASE_LABELS.get(phase, phase.replace("_", " ").title())
+    title = job.get("series_name", "Anime")
+    season = int(job.get("season_id", 0))
+    episode = int(job.get("episode_id", 0))
+    lines = [
+        f"{title} S{season:02d}E{episode:02d}",
+        f"{label}: [{progress_bar(percent)}] {percent}%",
+    ]
+    backend = progress.get("backend")
+    if backend:
+        lines.append(f"Source: {backend}")
+    detail = progress.get("detail")
+    if detail and detail != label:
+        lines.append(str(detail)[:120])
+    lines.append(f"Job: {job.get('job_id', '')[:8]}")
+    return "\n".join(lines)
+
+
+async def edit_progress_messages(context, job_id, text):
+    for chat_id, message_id in STORE.get_progress_messages(job_id).items():
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=text,
+            )
+        except BadRequest as error:
+            if "message is not modified" not in str(error).lower():
+                logger.warning(
+                    "Could not edit progress message for job %s: %s",
+                    job_id,
+                    error,
+                )
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -65,18 +113,22 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def getanime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    '''
-    Fetches the anime file on the mongo db and then if not found,
-    downloads the anime using animdl
-    '''
+    """Return a cached episode or queue it for the media worker."""
     logger.info('download function is called!')
 
     chat_id = update.effective_chat.id
-    rawUserInput = update.message.text
-    userInput = rawUserInput[10:] if len(rawUserInput) > 10 else ""
+    raw_user_input = update.message.text or ""
+    user_input = raw_user_input.partition(" ")[2].strip()
 
-    if userInput and not userInput == " ":
-        userdata = parse_search_query(userInput)
+    if user_input:
+        userdata = parse_search_query(user_input)
+        validation_error = validate_search_query(userdata)
+        if validation_error:
+            await update.message.reply_text(
+                f"{validation_error}\n"
+                "Usage: /getanime <name>, <season>, <episode>"
+            )
+            return
         
         # Normalize series name to create consistent series_key
         series_name = userdata.get('series_name')
@@ -91,19 +143,11 @@ async def getanime(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Episode: {episode_id}"
         )
         await update.message.reply_text(reply_msg)
-        logger.info('search_in_mongodb:"%s"', userdata)
+        logger.info("episode_request=%s", userdata)
 
-        # Use series_key for database queries
-        search_in_mongodb = {
-            "series_key": series_key,
-            "season_id": season_id,
-            "episode_id": episode_id
-        }
-        anime_name = getData(search_in_mongodb)
+        anime_name = STORE.get_episode(series_key, season_id, episode_id)
         if anime_name:
-            logger.info('Got data from mongoDB')
-            logger.info(anime_name)
-            updateData(anime_name)
+            logger.info("Found cached episode %s", series_key)
             try:
                 if anime_name.get("file_id"):
                     await context.bot.send_video(
@@ -113,71 +157,46 @@ async def getanime(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         read_timeout=120,
                         write_timeout=120
                     )
+                    STORE.increment_episode_queries(
+                        series_key,
+                        season_id,
+                        episode_id,
+                    )
                     return  # Exit early since we found and sent the video
-                else:
-                    msg = "Anime found in database but file_id is missing"
-                    await update.message.reply_text(msg)
             except Exception as e:
                 logger.error(f"Error sending video: {e}")
-                logger.info("Cache miss - file_id failed, falling back to re-download")
+                logger.info("Cached file failed; queuing a replacement")
                 await update.message.reply_text("Error sending cached video. Re-downloading...")
-                # Fall through to download logic
 
-        # Only download and upload if anime not found in database or cache failed
-        logger.info('Anime not found in database, downloading...')
-        
-        # Get deterministic download path
-        download_dir, expected_mp4 = get_download_path(series_key, season_id, episode_id)
-        download_dir.mkdir(parents=True, exist_ok=True)
-
-        # Use absolute path for downloader service
-        downloader_script = PROJECT_ROOT / 'downloaderService' / 'main.py'
-        cmd = [
-            sys.executable,
-            str(downloader_script),
-            series_name,
-            str(season_id),
-            str(episode_id),
-            str(download_dir)
-        ]
-        
         try:
-            subprocess.check_call(cmd, cwd=str(PROJECT_ROOT))
-            reply_msg = f"{series_name} - S{season_id}E{episode_id} is done downloading!"
-            await update.message.reply_text(reply_msg)
-
-            # Use deterministic path instead of scanning
-            filepath = getalltsfiles(series_key, season_id, episode_id)
-            if filepath and os.path.exists(filepath):
-                # Create object_id with season: series_key-s{season_id}-e{episode_id}
-                object_id = f"{series_key}-s{season_id}-e{episode_id}"
-                uploader_script = PROJECT_ROOT / 'uploaderService' / 'main.py'
-                upload_cmd = [
-                    sys.executable,
-                    str(uploader_script),
-                    filepath,
-                    str(chat_id),
-                    object_id
-                ]
-                try:
-                    subprocess.check_call(upload_cmd, cwd=str(PROJECT_ROOT))
-                    # Cleanup: Delete the local mp4 file after successful upload
-                    # (Telegram file_id is now cached, so local file is no longer needed)
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
-                        logger.info(f'Cleaned up local file: {filepath}')
-                except subprocess.CalledProcessError as upload_error:
-                    logger.error(f"Upload failed: {upload_error}")
-                    # Keep the file for potential retry
-                    raise
+            job_id, created = STORE.enqueue_episode(
+                series_key=series_key,
+                series_name=series_name,
+                season_id=season_id,
+                episode_id=episode_id,
+                chat_id=chat_id,
+            )
+            if created:
+                message = (
+                    f"Queued {series_name} S{season_id:02d}E{episode_id:02d}.\n"
+                    f"Job: {job_id[:8]}"
+                )
             else:
-                await update.message.reply_text("Error: Could not find downloaded file")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Error in subprocess call: {e}")
-            await update.message.reply_text("Error during download/upload process. Please retry.")
-        except Exception as e:
-            logger.error(f"Unexpected error: {e}")
-            await update.message.reply_text("An unexpected error occurred. Please retry.")
+                message = (
+                    "That episode is already being prepared. "
+                    "You will receive it when the job finishes."
+                )
+            progress_message = await update.message.reply_text(message)
+            STORE.set_progress_message(
+                job_id,
+                chat_id,
+                progress_message.message_id,
+            )
+        except Exception:
+            logger.exception("Could not enqueue episode")
+            await update.message.reply_text(
+                "The media queue is unavailable. Please retry shortly."
+            )
 
     else:
         await update.message.reply_text("Please refer to /help")
@@ -204,115 +223,130 @@ async def check_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info('check_document function is called!')
     user_id = update.message.from_user.id
 
-    if user_id == configdata.get('agent_user_id'):
-        if not update.message.video:
-            logger.warning('Received message without video')
+    if user_id == SETTINGS.agent_user_id:
+        media = update.message.video
+        if (
+            media is None
+            and update.message.document
+            and (update.message.document.mime_type or "").startswith("video/")
+        ):
+            media = update.message.document
+        if media is None:
+            logger.warning('Received message without video media')
             return
 
-        file_id = update.message.video.file_id
+        file_id = media.file_id
         caption = update.message.caption
 
-        if not caption or ':' not in caption:
+        if not caption or not caption.startswith("meido:"):
             logger.warning('Received video without proper caption format')
             return
 
         try:
-            parts = caption.split(":")
-            if len(parts) < 2:
-                logger.error(f'Invalid caption format: {caption}')
-                return
-
-            end_user_chat_id = parts[0]
-            object_id = parts[1]
-
-            # Parse object_id format: series_key-s{season_id}-e{episode_id}
-            # Example: "death_note-s1-e3"
-            try:
-                # Split by '-' and look for 's' and 'e' prefixes
-                parts_obj = object_id.split("-")
-                if len(parts_obj) < 3:
-                    logger.error(f'Invalid object_id format: {object_id}')
-                    return
-                
-                series_key = parts_obj[0]
-                season_part = None
-                episode_part = None
-                
-                for part in parts_obj[1:]:
-                    if part.startswith('s') and part[1:].isdigit():
-                        season_part = part
-                    elif part.startswith('e') and part[1:].isdigit():
-                        episode_part = part
-                
-                if not season_part or not episode_part:
-                    logger.error(f'Invalid object_id format (missing s/e): {object_id}')
-                    return
-                
-                season_id = int(season_part[1:])
-                episode_id = int(episode_part[1:])
-                
-                # Try to get original series_name from database if exists, otherwise use series_key
-                existing = getData({"series_key": series_key, "season_id": season_id, "episode_id": episode_id})
-                series_name = existing.get("series_name") if existing and existing.get("series_name") else series_key.replace("_", " ").title()
-                
-            except (ValueError, IndexError) as e:
-                logger.error(f'Error parsing object_id: {object_id}, error: {e}')
-                return
-
-            data2post = {
-                "series_key": series_key,
-                "series_name": series_name,
-                "season_id": season_id,
-                "episode_id": episode_id,
-                "file_id": file_id,
-                "times_queried": 0,
-                "date_added": datetime.now()
-            }
-            logger.info('Got Posting data to mongoDB')
-            logger.info(data2post)
-            postData(data2post)
-
-            # Keep in mind here i have to parse the chat_id from caption above
-            await context.bot.send_video(
-                chat_id=int(end_user_chat_id),
-                video=file_id,
-                supports_streaming=True,
-                read_timeout=120,
-                write_timeout=120
+            job_id = caption.partition(":")[2].strip()
+            progress_messages = STORE.get_progress_messages(job_id)
+            waiters = STORE.complete_job(job_id, file_id)
+            for chat_id in waiters:
+                await context.bot.send_video(
+                    chat_id=chat_id,
+                    video=file_id,
+                    supports_streaming=True,
+                    read_timeout=120,
+                    write_timeout=120,
+                )
+            job = STORE.get_job(job_id) or {}
+            ready_text = (
+                f"{job.get('series_name', 'Anime')} "
+                f"S{int(job.get('season_id', 0)):02d}"
+                f"E{int(job.get('episode_id', 0)):02d}\n"
+                "Ready ✅"
             )
-        except ValueError as e:
-            logger.error(f'Error parsing caption or chat_id: {e}')
-        except Exception as e:
-            logger.error(f'Error in check_document: {e}')
+            for chat_id, message_id in progress_messages.items():
+                try:
+                    await context.bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=ready_text,
+                    )
+                except BadRequest:
+                    logger.warning(
+                        "Could not mark progress message ready for job %s",
+                        job_id,
+                    )
+            STORE.clear_progress_messages(job_id)
+        except Exception:
+            logger.exception("Error completing uploaded job")
 
 
 async def debug_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info('debug_message function is called!')
 
 
-async def callback_minute(context: ContextTypes.DEFAULT_TYPE):
-    agent_id = configdata.get('agent_user_id')
-    if agent_id:
+async def process_worker_events(context: ContextTypes.DEFAULT_TYPE):
+    consumer_name = f"bot-{socket.gethostname()}"
+    for message_id, event in STORE.read_events(consumer_name):
         try:
-            await context.bot.send_message(chat_id=agent_id, text='Heart_beat <3')
-        except Exception as e:
-            logger.error(f'Error sending heartbeat: {e}')
+            if event.get("event") == "job_progress":
+                job_id = event["job_id"]
+                job = STORE.get_job(job_id) or {}
+                await edit_progress_messages(
+                    context,
+                    job_id,
+                    format_progress_message(job, event),
+                )
+            elif event.get("event") == "job_failed":
+                job_id = event["job_id"]
+                job = STORE.get_job(job_id) or {}
+                text = (
+                    f"{job.get('series_name', 'Anime')} could not be prepared.\n"
+                    f"{job.get('error', 'Please retry later.')}"
+                )
+                progress_messages = STORE.get_progress_messages(job_id)
+                for chat_id in STORE.take_failed_waiters(job_id):
+                    message_id_to_edit = progress_messages.get(chat_id)
+                    if message_id_to_edit:
+                        try:
+                            await context.bot.edit_message_text(
+                                chat_id=chat_id,
+                                message_id=message_id_to_edit,
+                                text=text,
+                            )
+                        except BadRequest:
+                            await context.bot.send_message(
+                                chat_id=chat_id,
+                                text=text,
+                            )
+                    else:
+                        await context.bot.send_message(
+                            chat_id=chat_id,
+                            text=text,
+                        )
+                STORE.clear_progress_messages(job_id)
+            STORE.acknowledge_event(message_id)
+        except Exception:
+            logger.exception("Could not process worker event %s", message_id)
 
 
 def main():
+    global SETTINGS, STORE
+    SETTINGS = load_settings(require_bot=True)
+    STORE = initialize_store(SETTINGS.redis_url)
+
     # Create application
-    application = Application.builder().token(API_TOKEN).build()
+    application = Application.builder().token(SETTINGS.bot_token).build()
 
     # Get job queue for scheduled tasks
     job_queue = application.job_queue
-    job_queue.run_repeating(callback_minute, interval=120, first=10)
+    job_queue.run_repeating(process_worker_events, interval=2, first=2)
 
     # Add handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("getanime", getanime))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, debug_message))
-    application.add_handler(MessageHandler(filters.VIDEO, check_document))
+    application.add_handler(
+        MessageHandler(filters.VIDEO | filters.Document.VIDEO, check_document)
+    )
 
     application.add_error_handler(error_handler)
 

@@ -1,144 +1,203 @@
 #!/usr/bin/env python3
+"""Upload completed media to the bot through a Telegram user account."""
 
-# https://sudonull.com/post/62683-Telegram-bots-Uploading-files-larger-than-50mb
-
-'''
-fun facts i just came accross
-
-the .send_file() function will have to send the file to the bot that
-will be serving the user, Just uploading the file to the server via
-upload, getting file_id and passing it to the bot will not work,
-file_id only works inside the chat in which it was created.
-So that our bot can send the file to the user by file_id
-the agent must send the bot this file
-then the bot will receive own file_id for this file and will be able
-to dispose of it.
-
-'''
-from telethon import TelegramClient
-from telethon.tl.types import DocumentAttributeVideo
 import asyncio
+from getpass import getpass
 import json
 import logging
 from pathlib import Path
+import subprocess
+import sys
 
-# Get the project root directory
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-# basic logging
-logging.basicConfig(
-    format='%(levelname)s - %(asctime)s - %(name)s - %(message)s',
-    level=logging.INFO
-)
+from meido_settings import load_settings
+from telethon import TelegramClient
+from telethon.errors import SessionPasswordNeededError
+from telethon.tl.types import DocumentAttributeVideo
+
+
 logger = logging.getLogger(__name__)
 
 
-# Load config file
-config_path = PROJECT_ROOT / 'uploaderService' / 'config' / 'agentConfig.json'
-try:
-    with open(config_path, 'r') as config:
-        configdata = json.load(config)
-except FileNotFoundError:
-    logger.error(f'Config file not found at {config_path}')
-    raise Exception('CONFIG FILE NOT FOUND!')
-except json.JSONDecodeError as e:
-    logger.error(f'Invalid JSON in config file: {e}')
-    raise Exception('INVALID CONFIG FILE!')
-
-entity = configdata.get('entity')  # session name - it doesn't matter what
-api_id_raw = configdata.get('api_id')
-api_hash = configdata.get('api_hash')
-phone = configdata.get('phone')
-bot_name = configdata.get('bot_name')
-
-# Coerce api_id to int (Telethon expects an integer)
-try:
-    api_id = int(api_id_raw) if api_id_raw is not None else None
-except (TypeError, ValueError):
-    api_id = None
-
-# Validate required fields
-if not all([entity, api_id, api_hash, phone, bot_name]):
-    missing = [k for k, v in {
-        'entity': entity,
-        'api_id': api_id,
-        'api_hash': api_hash,
-        'phone': phone,
-        'bot_name': bot_name
-    }.items() if not v]
-    raise Exception(f'Missing required config fields: {", ".join(missing)}')
+async def authorized_client(settings):
+    settings.session_root.mkdir(parents=True, exist_ok=True)
+    session_path = settings.session_root / settings.session_name
+    client = TelegramClient(
+        str(session_path),
+        settings.api_id,
+        settings.api_hash,
+    )
+    await client.connect()
+    if not await client.is_user_authorized():
+        await client.send_code_request(settings.phone)
+        code = input("Enter the Telegram login code: ").strip()
+        try:
+            await client.sign_in(settings.phone, code)
+        except SessionPasswordNeededError:
+            await client.sign_in(password=getpass("Telegram 2FA password: "))
+    return client
 
 
-async def callback(current, total):
-    # for upload progression
-    if total > 0:
-        logger.info('Uploaded: {:.2%}'.format(current / total))
+async def authorize(settings):
+    client = await authorized_client(settings)
+    try:
+        logger.info("Telegram worker session is authorized")
+    finally:
+        await client.disconnect()
 
 
-'''
-bot_name = the actual bot name
-file_path = where the file is downloaded
-chat_id = this is the end user chat_id, sent over caption to bot,
-            so it can parse and send it to the correct user
-object_id = an internal id used for mapping of file_id
-            and filename stored in the server(for optimization).
-'''
+def bot_id_from_token(bot_token):
+    try:
+        return int(bot_token.partition(":")[0])
+    except (TypeError, ValueError) as error:
+        raise ValueError("TELEGRAM_BOT_TOKEN has an invalid format") from error
 
 
-async def uploadVideo(bot_name, file_path, chat_id, object_id):
-    logger.info('video uploading initiated')
-    
-    # Resolve file path
-    file_path = Path(file_path)
-    if not file_path.is_absolute():
-        file_path = PROJECT_ROOT / file_path
-    
-    if not file_path.exists():
-        raise FileNotFoundError(f'File not found: {file_path}')
-    
-    # Session file path
-    session_path = PROJECT_ROOT / f'{entity}.session'
-    
-    async with TelegramClient(str(session_path), api_id, api_hash) as client:
-        if not await client.is_user_authorized():
-            # await client.send_code_request(phone)
-            # at the first start - uncomment, after authorization to avoid
-            # FloodWait I advise you to comment
-            code = input('Enter code: ')
-            await client.sign_in(phone, code)
-        
-        await client.send_file(
-            str(bot_name),
-            str(file_path),
-            caption=str(chat_id) + ':' + str(object_id),
-            attributes=[DocumentAttributeVideo(0, 0, 0)],
-            progress_callback=callback,
-            part_size_kb=512,
+async def resolve_bot_recipient(
+    client,
+    configured_username,
+    expected_bot_id=None,
+):
+    """Resolve the configured peer and reject user accounts."""
+    recipient = await client.get_entity(configured_username)
+    if not getattr(recipient, "bot", False):
+        resolved_username = getattr(recipient, "username", None) or "<unknown>"
+        raise ValueError(
+            "TELEGRAM_BOT_USERNAME must identify a bot account; "
+            f"@{resolved_username} is a Telegram user"
+        )
+    if expected_bot_id is not None and recipient.id != expected_bot_id:
+        resolved_username = getattr(recipient, "username", None) or "<unknown>"
+        raise ValueError(
+            "TELEGRAM_BOT_USERNAME does not match TELEGRAM_BOT_TOKEN; "
+            f"@{resolved_username} belongs to a different bot"
+        )
+    logger.info(
+        "Telegram upload recipient verified: @%s",
+        getattr(recipient, "username", configured_username),
+    )
+    return recipient
+
+
+def video_attribute(file_path):
+    """Read real video metadata so Telegram classifies the upload as video."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height:format=duration",
+                "-of",
+                "json",
+                str(file_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        metadata = json.loads(result.stdout)
+        stream = metadata["streams"][0]
+        duration = float(metadata.get("format", {}).get("duration") or 0)
+        return DocumentAttributeVideo(
+            duration=duration,
+            w=int(stream["width"]),
+            h=int(stream["height"]),
             supports_streaming=True,
         )
+    except Exception as error:
+        logger.warning("Could not probe video metadata: %s", error)
+        return DocumentAttributeVideo(
+            duration=0,
+            w=0,
+            h=0,
+            supports_streaming=True,
+        )
+
+
+async def upload_video_with_client(
+    client,
+    recipient,
+    file_path,
+    job_id,
+    progress_callback=None,
+):
+    file_path = Path(file_path).resolve()
+    if not file_path.is_file():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    def report_upload_progress(current, total):
+        if total <= 0:
+            return
+        percent = current / total * 100
+        logger.info("Uploaded %.1f%%", percent)
+        if progress_callback:
+            progress_callback(
+                {
+                    "phase": "uploading",
+                    "percent": percent,
+                    "detail": "Uploading to Telegram",
+                }
+            )
+
+    return await client.send_file(
+        recipient,
+        str(file_path),
+        caption=f"meido:{job_id}",
+        attributes=[video_attribute(file_path)],
+        progress_callback=report_upload_progress,
+        part_size_kb=512,
+        supports_streaming=True,
+    )
+
+
+async def upload_video(
+    file_path,
+    job_id,
+    settings,
+    progress_callback=None,
+):
+    client = await authorized_client(settings)
+    try:
+        recipient = await resolve_bot_recipient(
+            client,
+            settings.bot_username,
+            bot_id_from_token(settings.bot_token),
+        )
+        return await upload_video_with_client(
+            client,
+            recipient,
+            file_path,
+            job_id,
+            progress_callback=progress_callback,
+        )
+    finally:
         await client.disconnect()
-    return 0
 
 
 async def main(argv):
-    if len(argv) < 4:
-        raise ValueError('Usage: python main.py <file_path> <chat_id> <object_id>')
-    
-    file_path = argv[1]
-    chat_id = argv[2]
-    object_id = argv[3]
+    settings = load_settings(require_uploader=True)
+    if len(argv) == 2 and argv[1] == "--authorize":
+        await authorize(settings)
+        return
+    if len(argv) != 3:
+        raise ValueError(
+            "Usage: python -m uploaderService.main --authorize | "
+            "<file_path> <job_id>"
+        )
+    await upload_video(argv[1], argv[2], settings)
 
-    await uploadVideo(bot_name, file_path, chat_id, object_id)
 
-
-if __name__ == '__main__':
-    import sys
-    try:
-        asyncio.run(main(sys.argv))
-    except KeyboardInterrupt:
-        logger.info('Interrupted by user')
-    except Exception as e:
-        logger.error(f'Error: {e}')
-        sys.exit(1)
-
-# python uploaderService/main.py <file_path> <chat_id> <object_id>
+if __name__ == "__main__":
+    logging.basicConfig(
+        format="%(levelname)s - %(asctime)s - %(name)s - %(message)s",
+        level=logging.INFO,
+    )
+    asyncio.run(main(sys.argv))

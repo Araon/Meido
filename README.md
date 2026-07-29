@@ -148,12 +148,13 @@ Create a bot/test environment:
 
 ```bash
 python -m venv .venv
-.venv/Scripts/python -m pip install -r requirements-test.txt
+.venv/Scripts/python -m pip install ".[bot,worker,test]"
 .venv/Scripts/python -m pytest
 ```
 
-The worker dependencies intentionally live in `requirements-worker.txt`.
-Downloader dependencies stay out of the Telegram bot process.
+All Python dependencies live in `pyproject.toml`. The `bot`, `worker`, and
+`test` extras let each environment install only what it needs. Downloader
+provider dependencies stay out of both Python processes.
 
 ## Persistence
 

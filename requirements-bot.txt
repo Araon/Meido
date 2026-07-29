@@ -1,3 +1,0 @@
-python-telegram-bot[job-queue]==22.8
-python-dotenv==1.2.2
-redis==8.0.1

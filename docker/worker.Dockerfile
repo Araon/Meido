@@ -8,10 +8,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY requirements-worker.txt .
+COPY pyproject.toml .
 RUN python -m pip install --upgrade pip \
-    && python -m pip install -r requirements-worker.txt \
-    && python -m pip uninstall -y wheel \
+    && python -m pip install ".[worker]" \
     && python -m pip check \
     && ffmpeg -version
 

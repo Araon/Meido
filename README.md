@@ -1,3 +1,5 @@
+
+
 # Meido
 
 <p align="center">
@@ -155,8 +157,8 @@ Create a bot/test environment:
 
 ```bash
 python -m venv .venv
-.venv/Scripts/python -m pip install ".[bot,worker,test]"
-.venv/Scripts/python -m pytest
+.venv/bin/python -m pip install ".[bot,worker,test]"  # Use .venv\Scripts\python on Windows
+.venv/bin/python -m pytest
 ```
 
 All Python dependencies live in `pyproject.toml`. The `bot`, `worker`, and
